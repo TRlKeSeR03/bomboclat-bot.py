@@ -7,12 +7,13 @@ import os
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GEMINI_KEY = os.environ.get('GEMINI_KEY')
 
-# Gemini Yapılandırması
+# Gemini Yapılandırması (Hata veren yer burasıydı, düzelttik)
 genai.configure(api_key=GEMINI_KEY)
 model = genai.GenerativeModel(
     model_name='gemini-1.5-flash',
-    tools=[{"google_search": {}}]
+    tools=['google_search_retrieval']  # 'google_search' yerine bunu yazdık
 )
+
 
 bot = telebot.TeleBot(TELE_TOKEN)
 
