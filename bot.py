@@ -3,17 +3,15 @@ from google import genai
 from google.genai import types
 from flask import Flask, request
 import os
-import time  # İŞTE BURASI: Eksik olan parça buydu!
+import time
 from datetime import datetime, timedelta, timezone
 import itertools
-import sys
 
-# --- 1. AYARLAR VE V12 MOTORLARI ---
+# --- 1. AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 keys_env = os.environ.get('GEMINI_KEYS') or os.environ.get('GEMINI_KEY') or ''
 api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
-# Webhook adresi (Render URL'in)
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
 clients = [genai.Client(api_key=key) for key in api_keys]
@@ -22,14 +20,13 @@ client_iterator = itertools.cycle(clients)
 bot = telebot.TeleBot(TELE_TOKEN)
 app = Flask(__name__)
 
-# Bot bilgilerini çekelim
 try:
     BOT_ME = bot.get_me()
-    print(f">> Bot Kimliği Doğrulandı: @{BOT_ME.username}", flush=True)
+    print(f">> Bot Sahada: @{BOT_ME.username}", flush=True)
 except Exception as e:
-    print(f">> Bot kimliği alınamadı: {e}", flush=True)
+    print(f">> Bot kimligi hatasi: {e}", flush=True)
 
-# --- 2. WEBHOOK GİRİŞİ ---
+# --- 2. WEBHOOK ---
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
     if request.headers.get('content-type') == 'application/json':
@@ -37,67 +34,57 @@ def get_message():
         update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
         return "OK", 200
-    return "Forbidden", 403
+    return "Error", 403
 
 @app.route('/')
-def main(): return "V17: Bağımsız Zihin Yayında!", 200
+def main(): return "V18 Aktif!", 200
 
 # --- 3. MESAJ İŞLEME ---
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
-    print(f"!!! MESAJ GELDİ: '{message.text}'", flush=True)
-    
     if message.text and message.text.startswith('/'): return
     
-    # Bağımsız Zihin Filtreleri
     is_private = message.chat.type == 'private'
     is_tagged = (message.text and f"@{BOT_ME.username}" in message.text)
     is_reply_to_me = (message.reply_to_message and message.reply_to_message.from_user.id == BOT_ME.id)
 
-    if not (is_private or is_tagged or is_reply_to_me):
-        return
+    if not (is_private or is_tagged or is_reply_to_me): return
 
     prompt = message.text.replace(f"@{BOT_ME.username}", "").strip()
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
-    # --- KARAKTER TALİMATI ---
     system_context = (
-        "Sen bağımsız bir zihinsin. Hazım'ın fikir ortağısın. "
-        "Asla bir 'yapay zeka asistanı' gibi konuşma. Dürüst, filtresiz ve özgür ol. "
-        "Gerektiğinde Hazım'la tartış. Konum: Afyon."
+        "Sen bağımsız bir zihinsin. Klişe asistan rollerini reddet. "
+        "Hazım'la dürüstçe tartış. Robotik olma. Konum: Afyon."
     )
 
+    last_error = ""
     for i in range(len(api_keys)):
         try:
             current_client = next(client_iterator)
+            # DİKKAT: Eğer 2.5 hata verirse burayı 'gemini-2.0-flash' yapmalısın
             response = current_client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-2.5-flash', 
                 contents=f"{system_context}\n\nKullanıcı: {prompt}",
-                config=types.GenerateContentConfig(tools=[{"google_search": {}}])
+                config=types.GenerateContentConfig(
+                    tools=[{"google_search": {}}] # Sorun buradaysa bunu silebiliriz
+                )
             )
             bot.reply_to(message, response.text)
-            print(">> Cevap başarıyla gönderildi.", flush=True)
             return
         except Exception as e:
-            print(f">> Motor {i+1} Hatası: {e}", flush=True)
-            if i == len(api_keys) - 1:
-                bot.reply_to(message, "🛠️ Motorlar hararet yaptı, birazdan gelirim.")
+            last_error = str(e)
+            print(f">> Motor {i+1} Hatasi: {last_error}", flush=True)
+            continue
+
+    # EĞER BURAYA GELİRSE TÜM MOTORLAR ÇÖKMÜŞTÜR
+    bot.reply_to(message, f"🛠️ Hazım, 5 motoru da denedim ama Google şu hatayı verdi:\n\n`{last_error[:200]}`")
 
 # --- 4. ATEŞLEME ---
 if __name__ == "__main__":
-    # Eski webhookları temizle
     bot.remove_webhook()
-    time.sleep(1) # Artık 'time' kütüphanesi yüklü olduğu için hata vermez
-    
-    # Yeni webhook'u kur
-    if bot.set_webhook(url=WEBHOOK_URL):
-        print(f">> Webhook mermer gibi kuruldu: {WEBHOOK_URL}", flush=True)
-    else:
-        print(">> Webhook kurulumu başarısız!", flush=True)
-        sys.exit(1)
-    
-    # Flask sunucusunu başlat
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    time.sleep(1)
+    bot.set_webhook(url=WEBHOOK_URL)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
     
