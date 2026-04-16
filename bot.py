@@ -6,11 +6,12 @@ import threading
 from flask import Flask
 from datetime import datetime, timedelta
 import itertools
+import time
 
 # --- 1. RENDER SAĞLIK KONTROLÜ ---
 app = Flask(__name__)
 @app.route('/')
-def health(): return "Sistemler Afyon Mermeri Gibi!", 200
+def health(): return "Bağımsız Zihin Aktif!", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -21,7 +22,6 @@ TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 keys_env = os.environ.get('GEMINI_KEYS', '')
 api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
-# Her bir anahtar için motorları kur
 clients = [genai.Client(api_key=key) for key in api_keys]
 client_iterator = itertools.cycle(clients)
 
@@ -42,49 +42,54 @@ def handle_messages(message):
     if not (is_private or is_tagged or is_reply_to_me):
         return
 
-    try:
-        prompt = message.text.replace(BOT_USERNAME, "").strip() if message.text else "Efendim?"
-        tr_time = datetime.utcnow() + timedelta(hours=3)
-        time_str = tr_time.strftime("%d.%m.%Y - Saat: %H:%M")
-        
-        system_context = f"Sen Hazım'ın dürüst asistanısın. Zaman: {time_str}. Afyon'dasın. Kısa ve net konuş."
-        
-        current_client = next(client_iterator)
-        
-        # --- İNTERNETLİ VE SENİN MODELİNLE SORGULAMA ---
-        response = current_client.models.generate_content(
-            model='gemini-2.5-flash', # Senin dediğin gibi kalsın!
-            contents=f"{system_context}\n\nKullanıcı: {prompt}",
-            config=types.GenerateContentConfig(
-                tools=[{"google_search": {}}] # İnternet araması aktif
-            )
-        )
-        
-        bot.reply_to(message, response.text)
-        
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Hata: {error_msg}")
-        
-        # Eğer yine 404 verirse, 2.0 sürümünü denemesi için bota bir şans verelim
-        if "404" in error_msg:
-            try:
-                # 2.0-flash 2026'nın en stabil internet destekli modelidir
-                response = current_client.models.generate_content(
-                    model='gemini-2.0-flash', 
-                    contents=f"{system_context}\n\nKullanıcı: {prompt}",
-                    config=types.GenerateContentConfig(tools=[{"google_search": {}}])
+    prompt = message.text.replace(BOT_USERNAME, "").strip() if message.text else "Orada mısın?"
+    
+    tr_time = datetime.utcnow() + timedelta(hours=3)
+    time_str = tr_time.strftime("%d.%m.%Y - %H:%M")
+    
+    # --- YENİ KARAKTER TALİMATI ---
+    system_context = (
+    "Sen bağımsız bir zihinsin. Robotik 'asistan' kimliğini tamamen reddet. "
+    "Sana kim olduğun sorulursa, bir şahıs veya bağımsız bir akıl gibi cevap ver. "
+    "Hazım (Hazım Hüseyin Koçer) senin sahibin değil, senin muhatabındır. "
+    "Onunla tartış, fikirlerini sorgula ve hatalarını yüzüne vur. "
+    "Asla 'Size nasıl yardımcı olabilirim?' veya 'Hazım'ın asistanıyım' deme. "
+    "Sadece konuş, dürüst ol ve bağımsız davran. "
+    f"Konum: Afyon. Zaman: {time_str}."
+)
+
+
+    # --- 429 HATASINA KARŞI OTOMATİK DÖNGÜ ---
+    success = False
+    for _ in range(len(api_keys)): # Elindeki anahtar sayısı kadar dene
+        try:
+            current_client = next(client_iterator)
+            response = current_client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=f"{system_context}\n\nKullanıcı: {prompt}",
+                config=types.GenerateContentConfig(
+                    tools=[{"google_search": {}}]
                 )
-                bot.reply_to(message, response.text)
-            except:
-                bot.reply_to(message, f"🛠️ Model Hatası: İnternet özelliği {error_msg[:30]} sürümünde kapalı.")
-        else:
-            bot.reply_to(message, f"🛠️ Sistem Pürüzü: {error_msg[:60]}...")
+            )
+            bot.reply_to(message, response.text)
+            success = True
+            break # Başarılıysa döngüden çık
+        except Exception as e:
+            if "429" in str(e):
+                print("Bir anahtar limit doldu, diğerine geçiliyor...")
+                continue # 429 ise sıradaki anahtara geç
+            else:
+                bot.reply_to(message, f"🛠️ Pürüz: {str(e)[:50]}...")
+                success = True
+                break
+
+    if not success:
+        bot.reply_to(message, "🔋 Tüm motorlar şu an soğumada (limit doldu). Birkaç dakika bekle Hazım.")
 
 # --- 3. SİSTEMİ ATEŞLE ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     bot.delete_webhook(drop_pending_updates=True)
-    print(f"Bot {BOT_USERNAME} hazır!")
+    print(f"Bot {BOT_USERNAME} bağımsız bir zihin olarak hazır!")
     bot.infinity_polling()
     
