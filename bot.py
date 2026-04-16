@@ -86,10 +86,15 @@ def handle_messages(message):
     if not success:
         bot.reply_to(message, "🔋 Tüm motorlar şu an soğumada (limit doldu). Birkaç dakika bekle Hazım.")
 
-# --- 3. SİSTEMİ ATEŞLE ---
+# --- SİSTEMİ ATEŞLE ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
-    bot.delete_webhook(drop_pending_updates=True)
-    print(f"Bot {BOT_USERNAME} bağımsız bir zihin olarak hazır!")
-    bot.infinity_polling()
     
+    # KRİTİK TEMİZLİK: Telegram'a "Bütün eski bağlantıları kopar" emri veriyoruz
+    bot.remove_webhook() 
+    time.sleep(1) # Telegram'ın kendine gelmesi için 1 saniye mola
+    
+    print(f"Bot {BOT_USERNAME} tertemiz bir sayfayla sahada!")
+    
+    # non_stop=True ve interval=1 ekleyerek bağlantı kopmalarına karşı daha dirençli yapıyoruz
+    bot.infinity_polling(non_stop=True, interval=1, timeout=20)
