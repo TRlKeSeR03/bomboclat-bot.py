@@ -89,15 +89,21 @@ def handle_messages(message):
 
 # --- 3. SİSTEMİ ATEŞLE ---
 if __name__ == "__main__":
-    # Flask'ı ayrı bir iş parçacığında başlatıyoruz
     threading.Thread(target=run_flask, daemon=True).start()
     
-    # 409 Conflict (Çakışma) hatalarını bitiren kritik temizlik hamleleri:
-    bot.remove_webhook()
-    time.sleep(2) # Telegram sunucularının eski bağlantıyı düşürmesi için mola
+    # Telegram hafızasını sıfırlamak için webhook temizliği
+    try:
+        bot.remove_webhook()
+        time.sleep(2)
+    except:
+        pass
     
     print(f"Bot {BOT_USERNAME} bağımsız bir zihin olarak uyanıyor!")
     
-    # skip_pending=True: Bot kapalıyken gelen eski mesajları görmezden gelerek çakışmayı önler
-    bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
-    
+    # infinity_polling yerine düz polling kullanarak daha stabil bir başlangıç yapıyoruz
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=1, timeout=20, skip_pending=True)
+        except Exception as e:
+            print(f"Polling Hatası: {e}")
+            time.sleep(5) # Hata olursa 5 saniye bekle ve tekrar dene
