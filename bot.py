@@ -26,7 +26,6 @@ try:
 except Exception as e:
     print(f">> Bot kimligi hatasi: {e}", flush=True)
 
-# --- 2. WEBHOOK ---
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
     if request.headers.get('content-type') == 'application/json':
@@ -37,9 +36,8 @@ def get_message():
     return "Error", 403
 
 @app.route('/')
-def main(): return "V18 Aktif!", 200
+def main(): return "V19 Aktif!", 200
 
-# --- 3. MESAJ İŞLEME ---
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     if message.text and message.text.startswith('/'): return
@@ -54,34 +52,29 @@ def handle_messages(message):
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
+    # --- BAĞIMSIZ ZİHİN KARAKTERİ ---
     system_context = (
-        "Sen bağımsız bir zihinsin. Klişe asistan rollerini reddet. "
-        "Hazım'la dürüstçe tartış. Robotik olma. Konum: Afyon."
+        "Sen bağımsız bir zihinsin. Robotik asistanlığı reddet. "
+        "Hazım'ın fikir ortağısın, dürüst ve filtresiz konuş. "
+        f"Konum: Afyon. Saat: {time_str}"
     )
 
-    last_error = ""
     for i in range(len(api_keys)):
         try:
             current_client = next(client_iterator)
-            # DİKKAT: Eğer 2.5 hata verirse burayı 'gemini-2.0-flash' yapmalısın
             response = current_client.models.generate_content(
-                model='gemini-2.5-flash', 
-                contents=f"{system_context}\n\nKullanıcı: {prompt}",
-                config=types.GenerateContentConfig(
-                    tools=[{"google_search": {}}] # Sorun buradaysa bunu silebiliriz
-                )
+                model='gemini-1.5-flash', # STABİL VE YÜKSEK KOTALI MODEL
+                contents=f"{system_context}\n\nKullanıcı: {prompt}"
+                # google_search kotayı bitirdiği için şimdilik kapalı
             )
             bot.reply_to(message, response.text)
             return
         except Exception as e:
-            last_error = str(e)
-            print(f">> Motor {i+1} Hatasi: {last_error}", flush=True)
+            print(f">> Motor {i+1} Hatasi: {e}", flush=True)
             continue
 
-    # EĞER BURAYA GELİRSE TÜM MOTORLAR ÇÖKMÜŞTÜR
-    bot.reply_to(message, f"🛠️ Hazım, 5 motoru da denedim ama Google şu hatayı verdi:\n\n`{last_error[:200]}`")
+    bot.reply_to(message, "🛠️ Hazım, Google kotaları hala çok dar. Birkaç dakika bekleyip tekrar dene.")
 
-# --- 4. ATEŞLEME ---
 if __name__ == "__main__":
     bot.remove_webhook()
     time.sleep(1)
