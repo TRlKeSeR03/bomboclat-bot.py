@@ -4,18 +4,18 @@ from google.genai import types
 import os
 import threading
 from flask import Flask
-from datetime import datetime, timedelta
+# Zaman kütüphanesi en modern haline güncellendi
+from datetime import datetime, timedelta, timezone 
 import itertools
 import time
 
-# --- 1. RENDER SAĞLIK KONTROLÜ (PORT SORUNU ÇÖZÜLDÜ) ---
+# --- 1. RENDER SAĞLIK KONTROLÜ ---
 app = Flask(__name__)
 @app.route('/')
 def health(): return "V12 Bağımsız Zihin Sahada!", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    # use_reloader=False ekleyerek Flask'ın gereksiz süreçler açmasını engelliyoruz
     app.run(host='0.0.0.0', port=port, use_reloader=False)
 
 # --- 2. AYARLAR VE ÇOKLU MOTOR (LOAD BALANCER) ---
@@ -43,9 +43,10 @@ def handle_messages(message):
     if not (is_private or is_tagged or is_reply_to_me):
         return
 
-    prompt = message.text.replace(BOT_USERNAME, "").strip() if message.text else "Efendim?"
+    prompt = message.text.replace(BOT_USERNAME, "").strip() if message.text else "Söyle?"
     
-    tr_time = datetime.utcnow() + timedelta(hours=3)
+    # --- MODERN ZAMAN HESAPLAMASI (Uyarı vermeyen kısım) ---
+    tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%d.%m.%Y - %H:%M")
     
     # --- KARAKTER: BAĞIMSIZ ZİHİN ---
@@ -62,12 +63,11 @@ def handle_messages(message):
         try:
             current_client = next(client_iterator)
             
-            # Google'ın en stabil ve internet uyumlu modeli
             response = current_client.models.generate_content(
                 model='gemini-2.0-flash', 
                 contents=f"{system_context}\n\nKullanıcı: {prompt}",
                 config=types.GenerateContentConfig(
-                    tools=[{"google_search": {}}] # Google Arama Aktif
+                    tools=[{"google_search": {}}] # Canlı İnternet Bağlantısı
                 )
             )
             bot.reply_to(message, response.text)
@@ -77,11 +77,11 @@ def handle_messages(message):
             error_str = str(e)
             print(f"Deneme Hatası: {error_str}")
             
-            # 429 (Limit) hatasıysa döngü devam eder, sıradaki anahtar denenir
+            # Eğer hata limit (429) kaynaklıysa diğer anahtara geç
             if "429" in error_str:
                 continue
             else:
-                # Başka bir hata varsa ve tüm anahtarlar denendiyse GERÇEK hatayı yazdırır
+                # Farklı bir hataysa gerçeği söyle
                 if i == len(api_keys) - 1:
                     bot.reply_to(message, f"🛠️ Gerçek Hata: {error_str[:150]}")
                 return
@@ -90,11 +90,10 @@ def handle_messages(message):
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     
-    # Hayalet bağlantıları kırmak için temizleme işlemi
+    # Çakışmaları kırmak için güvenlik önlemi
     bot.remove_webhook()
     time.sleep(2)
     
-    print(f"Bot {BOT_USERNAME} V12 motoruyla sahada!")
-    # Çakışmaları önlemek için argümanları en sade haliyle bıraktık
+    print(f"Bot {BOT_USERNAME} mermer gibi hazır!")
     bot.infinity_polling(timeout=20)
     
