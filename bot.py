@@ -1,10 +1,10 @@
 import telebot
-from google import genai
+from google import genai # İŞTE YENİ KÜTÜPHANE BURADA ÇAĞRILIYOR
 import os
 import threading
 from flask import Flask
 
-# --- RENDER SAĞLIK KONTROLÜ ---
+# --- 1. RENDER SAĞLIK KONTROLÜ ---
 app = Flask(__name__)
 @app.route('/')
 def health(): return "Yeni Nesil Bot Aktif!", 200
@@ -13,11 +13,11 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# --- AYARLAR VE YENİ GEMINI KÜTÜPHANESİ ---
+# --- 2. AYARLAR VE YENİ GEMINI KÜTÜPHANESİ ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GEMINI_KEY = os.environ.get('GEMINI_KEY')
 
-# Yeni nesil client oluşturma
+# Yeni nesil client oluşturma (Eski genai.configure() artık kullanılmıyor)
 client = genai.Client(api_key=GEMINI_KEY)
 
 bot = telebot.TeleBot(TELE_TOKEN)
@@ -46,7 +46,7 @@ def handle_messages(message):
         
         # Yeni nesil kütüphane ile mesaj gönderme
         response = client.models.generate_content(
-            model='gemini-2.5-flash', # Yeni kütüphane bu ismi sorunsuz tanır
+            model='gemini-2.5-flash', # Yeni sistem bu ismi %100 tanır
             contents=f"{system_context}\n\nKullanıcı: {prompt}"
         )
         
@@ -57,7 +57,7 @@ def handle_messages(message):
         print(f"Hata: {error_msg}")
         bot.reply_to(message, f"🛠️ Sistem Pürüzü: {error_msg[:60]}...")
 
-# --- SİSTEMİ ATEŞLE ---
+# --- 3. SİSTEMİ ATEŞLE ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     bot.delete_webhook(drop_pending_updates=True)
