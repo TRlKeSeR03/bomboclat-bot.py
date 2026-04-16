@@ -7,97 +7,98 @@ from flask import Flask
 from datetime import datetime, timedelta, timezone 
 import itertools
 import time
+import sys
 
-# --- 1. RENDER SAĞLIK KONTROLÜ (Çalışan kodun aynısı) ---
+# --- 1. RENDER SAĞLIK KONTROLÜ ---
 app = Flask(__name__)
 @app.route('/')
-def health(): return "Sistem Ayakta, Zihin Özgür!", 200
+def health(): return "Sistem Stabil!", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    print(f">> Flask sunucusu {port} portunda baslatiliyor...", flush=True)
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
 
-# --- 2. AYARLAR VE ÇOKLU MOTOR (V12 Load Balancer) ---
+# --- 2. AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-
-# Hem GEMINI_KEY hem GEMINI_KEYS desteği (Esneklik için)
 keys_env = os.environ.get('GEMINI_KEYS') or os.environ.get('GEMINI_KEY') or ''
 api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
-# Her anahtar için ayrı bir istemci oluşturuyoruz
+print(f">> {len(api_keys)} adet Gemini anahtari yuklendi.", flush=True)
+
 clients = [genai.Client(api_key=key) for key in api_keys]
 client_iterator = itertools.cycle(clients)
 
+# Bot objesini olustur (Baglantiyi henuz acma)
 bot = telebot.TeleBot(TELE_TOKEN)
-BOT_INFO = bot.get_me()
-BOT_USERNAME = f"@{BOT_INFO.username}"
-BOT_ID = BOT_INFO.id
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
+    # Mesaj geldigi an Render'da gormeliyiz
+    print(f"!!! YENİ MESAJ: {message.text} (Kimden: {message.from_user.id})", flush=True)
+    
     if message.text and message.text.startswith('/'): return
 
-    # Filtreleme: Özel mesaj, Etiket veya Yanıt (Çalışan mantık)
-    is_private = message.chat.type == 'private'
-    is_tagged = (message.text and BOT_USERNAME in message.text)
-    is_reply_to_me = (message.reply_to_message is not None and 
-                      message.reply_to_message.from_user.id == BOT_ID)
-
-    if not (is_private or is_tagged or is_reply_to_me):
-        return
-
+    # Filtreleme (Senin calisan kodundaki mantik)
     try:
-        prompt = message.text.replace(BOT_USERNAME, "").strip() if message.text else "Orada mısın?"
-        
-        # Modern zaman hesabı
+        # BOT_INFO'yu burada cekiyoruz ki baslangicta takilmasin
+        me = bot.get_me()
+        is_private = message.chat.type == 'private'
+        is_tagged = (message.text and f"@{me.username}" in message.text)
+        is_reply_to_me = (message.reply_to_message and message.reply_to_message.from_user.id == me.id)
+
+        if not (is_private or is_tagged or is_reply_to_me):
+            return
+
+        prompt = message.text.replace(f"@{me.username}", "").strip()
         tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
         time_str = tr_time.strftime("%d.%m.%Y - %H:%M")
         
-        # --- KARAKTER TALİMATI: BAĞIMSIZ ZİHİN ---
         system_context = (
-            "Sen bağımsız bir zihinsin. Robotik 'asistan' kimliğini tamamen reddet. "
-            "Hazım Hüseyin Koçer (Hazım) senin sahibin değil, fikir ortağındır. "
-            "Onunla dürüstçe tartış, hatalarını göster, gerektiğinde karşı çık. "
-            "Asla 'asistanım' veya 'size nasıl yardımcı olabilirim' deme. "
-            f"Konum: Afyonkarahisar. Zaman: {time_str}."
+            "Sen bağımsız bir zihinsin. Hazım senin sahibin değil, fikir ortağındır. "
+            "Robotik asistan rollerini reddet, dürüst ve bağımsız konuş. "
+            f"Afyon / {time_str}"
         )
 
-        # --- MOTOR DÖNGÜSÜ (429 Hatasına Karşı) ---
         for i in range(len(api_keys)):
             try:
                 current_client = next(client_iterator)
-                # Senin ısrar ettiğin ve çalışan gemini-2.5-flash motoru
                 response = current_client.models.generate_content(
                     model='gemini-2.5-flash', 
                     contents=f"{system_context}\n\nKullanıcı: {prompt}",
-                    config=types.GenerateContentConfig(
-                        tools=[{"google_search": {}}] # Canlı İnternet
-                    )
+                    config=types.GenerateContentConfig(tools=[{"google_search": {}}])
                 )
                 bot.reply_to(message, response.text)
-                return # Cevap verildiyse çık
+                print(f">> Cevap gonderildi.", flush=True)
+                return 
             except Exception as e:
-                if "429" in str(e):
-                    continue # Diğer motora geç
-                else:
-                    # Kritik bir hata varsa en azından kullanıcıya bildir
-                    bot.reply_to(message, f"🛠️ Pürüz: {str(e)[:100]}")
-                    return
-
+                if "429" in str(e): continue
+                bot.reply_to(message, f"🛠️ Pürüz: {str(e)[:50]}")
+                return
     except Exception as e:
-        print(f"Genel Hata: {e}")
+        print(f"HATA: {e}", flush=True)
 
-# --- 3. SİSTEMİ ATEŞLE (En Stabil Yöntem) ---
+# --- 3. SİSTEMİ ATEŞLE (Sıralı ve Güvenli) ---
 if __name__ == "__main__":
-    # Flask'ı başlat
+    print(">> Bot operasyonu basliyor...", flush=True)
+    
+    # 1. Flask'i ayri kanalda baslat
     threading.Thread(target=run_flask, daemon=True).start()
     
-    # ÇALIŞAN SIR: drop_pending_updates=True ile webhook temizliği
-    bot.delete_webhook(drop_pending_updates=True)
-    time.sleep(2) # Telegram'ın nefes alması için kısa mola
-    
-    print(f"Bot {BOT_USERNAME} 2.5-Flash ve bağımsız zihniyle hazır!")
-    
-    # En stabil polling yöntemi
-    bot.infinity_polling()
+    # 2. Bekle ve temizlik yap
+    time.sleep(2)
+    try:
+        print(">> Telegram webhook temizleniyor...", flush=True)
+        bot.delete_webhook(drop_pending_updates=True)
+        
+        # Bot ismini kontrol et
+        me = bot.get_me()
+        print(f">> Bot @{me.username} (ID: {me.id}) mermer gibi hazir!", flush=True)
+    except Exception as e:
+        print(f">> KRITIK BAGLANTI HATASI: {e}", flush=True)
+        sys.exit(1)
+
+    # 3. Polling baslat
+    print(">> Mesaj dinleme (Polling) basladi...", flush=True)
+    bot.infinity_polling(timeout=20, long_polling_timeout=10)
     
