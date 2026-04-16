@@ -1,24 +1,31 @@
 import telebot
-from google import genai # İŞTE YENİ KÜTÜPHANE BURADA ÇAĞRILIYOR
+from google import genai
+from google.genai import types # İNTERNET ARAMASI İÇİN YENİ EKLENDİ
 import os
 import threading
 from flask import Flask
+from datetime import datetime, timedelta
+import itertools
 
 # --- 1. RENDER SAĞLIK KONTROLÜ ---
 app = Flask(__name__)
 @app.route('/')
-def health(): return "Yeni Nesil Bot Aktif!", 200
+def health(): return "İnternete Bağlı Çok Motorlu Bot Aktif!", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# --- 2. AYARLAR VE YENİ GEMINI KÜTÜPHANESİ ---
+# --- 2. YÜK DENGELEYİCİ VE AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-GEMINI_KEY = os.environ.get('GEMINI_KEY')
+keys_env = os.environ.get('GEMINI_KEYS', '')
+api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
-# Yeni nesil client oluşturma (Eski genai.configure() artık kullanılmıyor)
-client = genai.Client(api_key=GEMINI_KEY)
+if not api_keys:
+    print("DİKKAT: Hiç API Anahtarı Bulunamadı!")
+
+clients = [genai.Client(api_key=key) for key in api_keys]
+client_iterator = itertools.cycle(clients)
 
 bot = telebot.TeleBot(TELE_TOKEN)
 BOT_INFO = bot.get_me()
@@ -29,7 +36,7 @@ BOT_ID = BOT_INFO.id
 def handle_messages(message):
     if message.text and message.text.startswith('/'): return
 
-    # Mantık: Özel mesaj, Etiket veya Yanıt
+    # Filtre: Özel mesaj, Etiket veya Yanıt
     is_private = message.chat.type == 'private'
     is_tagged = (message.text and BOT_USERNAME in message.text)
     is_reply_to_me = (message.reply_to_message is not None and 
@@ -39,15 +46,22 @@ def handle_messages(message):
         return
 
     try:
-        # Prompt'u temizle
         prompt = message.text.replace(BOT_USERNAME, "").strip() if message.text else "Efendim?"
         
-        system_context = "Sen Hazım'ın asistanısın. Kısa ve net konuş."
+        tr_time = datetime.utcnow() + timedelta(hours=3)
+        time_str = tr_time.strftime("%d.%m.%Y - Saat: %H:%M")
         
-        # Yeni nesil kütüphane ile mesaj gönderme
-        response = client.models.generate_content(
-            model='gemini-2.5-flash', # Yeni sistem bu ismi %100 tanır
-            contents=f"{system_context}\n\nKullanıcı: {prompt}"
+        system_context = f"Sen Hazım'ın dürüst asistanısın. Şu anki tarih/saat: {time_str}. Afyonkarahisar'dasın. Kısa ve net cevap ver."
+        
+        current_client = next(client_iterator)
+        
+        # --- KRİTİK NOKTA: İNTERNET ARAMASI DEVREYE GİRİYOR ---
+        response = current_client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=f"{system_context}\n\nKullanıcı: {prompt}",
+            config=types.GenerateContentConfig(
+                tools=[{"google_search": {}}] # Botun beynine Google Arama bağlandı
+            )
         )
         
         bot.reply_to(message, response.text)
@@ -55,12 +69,12 @@ def handle_messages(message):
     except Exception as e:
         error_msg = str(e)
         print(f"Hata: {error_msg}")
-        bot.reply_to(message, f"🛠️ Sistem Pürüzü: {error_msg[:60]}...")
+        bot.reply_to(message, f"🛠️ İşlemci Isındı: {error_msg[:60]}...")
 
 # --- 3. SİSTEMİ ATEŞLE ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     bot.delete_webhook(drop_pending_updates=True)
-    print(f"Bot {BOT_USERNAME} yeni kütüphaneyle hazır!")
+    print(f"Bot {BOT_USERNAME}, {len(api_keys)} motor ve CANLI İNTERNET bağlantısıyla sahada!")
     bot.infinity_polling()
     
