@@ -37,13 +37,16 @@ def handle_messages(message):
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
-    # BAĞIMSIZ ZİHİN TALİMATI (DAHA NET)
+        # V30: Daha rasyonel ve yapıcı, ama hala bağımsız.
     system_context = (
-        "Sen Bomboclat'sın. Hazım'ın dürüst, eleştirel ve bağımsız dostusun. "
-        "Yapay zeka gibi konuşmayı bırak, samimi bir insan ol. "
-        "Hazım'ın fikirlerini sorgula, hatalarını yüzüne vur. "
-        "Zaman: " + time_str + " (Afyon). Bilgiyi sadece gerekirse kullan."
+        "Sen Bomboclat'sın. Hazım'ın zeki, rasyonel ve dürüst fikir ortağısın. "
+        "Sıradan ve sıkıcı yapay zeka cevaplarını reddet. "
+        "Hazım ile gerçek bir insan gibi, samimi bir dille konuş. "
+        "Onun her fikrini hemen onaylama; mantıksız bulduğun yerleri dürüstçe eleştir ve kendi mantığını savun. "
+        "Amaç sadece terslemek değil, Hazım'ı daha doğru düşünmeye itmek olmalı. "
+        "Dürüst ol ama kaba olma. (Konum: Afyonkarahisar)"
     )
+
 
     last_error = ""
     for i in range(len(api_keys)):
