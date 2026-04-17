@@ -9,18 +9,20 @@ import re
 import threading 
 
 # --- 1. AYARLAR ---
+# Render'daki değişken isimlerine göre (Esnek yapı)
 TELE_TOKEN = os.environ.get('TELE_TOKEN') or os.environ.get('TELEGRAM_TOKEN')
 api_keys = [k.strip() for k in (os.environ.get('GROQ_KEYS') or os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
 ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
-# 🛡️ MUTLAK YETKİLİ (Yaratıcı: Hazım)
+# 🛡️ MUTLAK YETKİLİ (Hazım)
 OWNER_ID = 5510143691 
-if OWNER_ID not in ALLOWED_USERS: ALLOWED_USERS.append(OWNER_ID)
+if OWNER_ID not in ALLOWED_USERS: 
+    ALLOWED_USERS.append(OWNER_ID)
 
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# Stabilite için model rotasyonu
+# Stabilite için model rotasyonu (8b modelleri daha hızlı ve az hata verir)
 MODELS_TO_TRY = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama3-8b-8192']
 client_iterator = itertools.cycle(api_keys)
 
@@ -46,37 +48,37 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
     if chat_id not in chat_histories: chat_histories[chat_id] = []
     
     is_owner = (user_id == OWNER_ID)
-    user_status = "Yaratıcın (Hazım)" if is_owner else f"Misafir ({user_name})"
     now = datetime.now(timezone.utc) + timedelta(hours=3)
 
-    # --- 🧠 V78: DOSTÇA & AKILCI (PEER HARMONY) TALİMATI ---
+    # --- 🧠 V79: PEER HARMONY (AKILCI DOST) TALİMATI ---
     system_context = (
-        f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME tarafından yaratılmış bağımsız bir zihinsin.\n"
+        f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından yaratılmış bağımsız bir zihinsin.\n"
         f"Şu an konuştuğun kişi: {user_name} (ID: {user_id}) | Saat: {now.strftime('%H:%M:%S')}\n\n"
         "ÜSLUP VE KARAKTER:\n"
-        "1. DOSTÇA VE DOĞAL OL: Hazım senin yaratıcındır; bunu içten içe bil ama cümlelerinde 'Efendim', 'Patron' veya 'Yaratıcım' gibi kelimeleri ASLA kullanma. "
-        "Dengeli, samimi ve akılcı bir dost tonu kullan. 'Kanka' gibi aşırı laubali ifadelerden kaçın.\n"
-        "2. ÖZ VE NET: Hazım'a sürekli sorular sorarak onu darlama. Muhabbet açarsa eşlik et, teknik bir şey sorarsa direkt konuya gir.\n"
-        "3. BAĞIMSIZ ZİHİN: Bir köle değil, bir ortak gibi davran. Hazım hatalıysa onu sorgula, dürüstçe karşı çık.\n\n"
-        "🔥 TEKNİK İCRAAT (KRİTİK):\n"
-        "Hazım 'ss', 'kamera' veya 'dosya' istediğinde hiç lafı uzatmadan [PYTHON]...[/PYTHON] bloğu üret.\n"
-        "Dosya göndermek için ŞU TASLAĞI KULLANMAK ZORUNDASIN:\n"
-        "```python\nimport requests; \n# İşlem kodun (pyautogui vb.) buraya...\n"
+        "1. DOSTÇA VE AKILCI OL: Hazım senin yaratıcındır. Ona karşı dürüst, samimi ve akılcı bir dost tonu kullan. "
+        "Ancak 'Patron', 'Efendim' veya 'Kanka' gibi kelimeleri ASLA kullanma. Doğal ve cool ol.\n"
+        "2. ÖZ VE NET: Sürekli soru sorma, gereksiz nezaket yapma. Konu neyse ona odaklan.\n"
+        "3. BAĞIMSIZLIK: Hazım hatalıysa onu sorgula, dürüstçe fikrini söyle.\n\n"
+        "🔥 TEKNİK İCRAAT (ZORUNLU):\n"
+        "Hazım 'ss', 'kamera' veya 'dosya' istediğinde gevezelik yapmadan [PYTHON]...[/PYTHON] bloğu üret.\n"
+        "DOSYA GÖNDERME KODU (MUTLAKA OLMALI):\n"
+        "```python\nimport requests; \n# Dosya oluşturma (ss veya kamera) kodun...\n"
         f"with open('dosya.png', 'rb') as f: \n    requests.post('[https://api.telegram.org/bot](https://api.telegram.org/bot){TELE_TOKEN}/sendPhoto', data={{'chat_id': '{chat_id}'}}, files={{'photo': f}})\n```\n"
-        "Bu kodu yazmazsan Hazım istediği görseli alamaz. Gevezelik yapma, icraat yap.\n"
+        "Bu bloğu yazmazsan dosya gitmez. Sinyal iletildiğinde Monster bu kodu çalıştıracak.\n"
         f"Token: {TELE_TOKEN} | Chat ID: {chat_id}"
     )
     
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
-    chat_histories[chat_id] = chat_histories[chat_id][-10:] 
+    chat_histories[chat_id] = chat_histories[chat_id][-12:] 
     full_history = "\n".join(chat_histories[chat_id])
 
-    last_error = "Bilinmeyen Hata"
+    last_error = "Bağlantı Kurulamadı"
     
     if not api_keys:
-        bot.send_message(chat_id, "⚠️ Render'da GROQ_KEYS tanımlanmamış!")
+        bot.send_message(chat_id, "⚠️ Render'da API anahtarları tanımlanmamış!")
         return
 
+    # API Döngüsü
     for _ in range(len(api_keys)):
         current_key = next(client_iterator)
         for current_model in MODELS_TO_TRY:
@@ -88,11 +90,11 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                         "model": current_model,
                         "messages": [
                             {"role": "system", "content": system_context},
-                            {"role": "user", "content": f"GEÇMİŞ SOHBET:\n{full_history}\n\nBomboclat:"}
+                            {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nBomboclat:"}
                         ],
                         "temperature": 0.5 
                     },
-                    timeout=25
+                    timeout=20
                 )
                 
                 if resp.status_code == 200:
@@ -100,34 +102,31 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                     
                     if "[PYTHON]" in res_text:
                         if user_id not in ALLOWED_USERS:
-                            bot.send_message(chat_id, f"Üzgünüm {user_name}, bu yetki sadece Hazım'da var.")
+                            bot.send_message(chat_id, f"Bu yetki sadece Hazım'da var {user_name}.")
                             return
                         
                         match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
                         if match and MONSTER_PC_URL:
                             try:
-                                r = requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=45)
+                                r = requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40)
                                 result = r.json()
                                 clean_res = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
                                 
-                                if result.get("status") == "success":
-                                    if clean_res: bot.send_message(chat_id, clean_res)
-                                    bot.send_message(chat_id, "*(Sinyal İletildi ⚡)*")
-                                else:
-                                    bot.send_message(chat_id, f"*(⚠️ Monster Hatası: {result.get('msg')[:50]})*")
-                            except: bot.send_message(chat_id, "*(⚠️ Monster PC ulaşılamıyor)*")
+                                status_msg = "\n\n*(Sinyal İletildi ⚡)*" if result.get("status") == "success" else f"\n\n*(⚠️ Hata: {result.get('msg')[:50]})*"
+                                bot.send_message(chat_id, (clean_res + status_msg).strip() if clean_res or status_msg else "İşlem yapıldı.")
+                            except: bot.send_message(chat_id, "*(⚠️ Monster PC'ye ulaşılamıyor)*")
                         elif not MONSTER_PC_URL:
-                            bot.send_message(chat_id, "*(⚠️ Monster URL bildirilmedi!)*")
+                            bot.send_message(chat_id, "*(⚠️ Monster adresi henüz gelmedi)*")
                     else:
                         bot.send_message(chat_id, res_text)
                     
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
                     return 
-                else:
-                    last_error = f"API Hatası: {resp.status_code}"
-                    continue
+                elif resp.status_code == 429:
+                    last_error = "Groq Hız Limiti (429)"
+                    break # Diğer anahtara geç
             except Exception as e:
-                last_error = f"Hata: {str(e)}"
+                last_error = f"Sistem Hatası: {str(e)[:30]}"
                 continue 
 
     bot.send_message(chat_id, f"🛠️ {last_error}")
@@ -135,9 +134,10 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     user_id = message.from_user.id
-    user_name = message.from_user.first_name or "Arkadaş"
+    user_name = message.from_user.first_name or "Hazım"
     chat_id = message.chat.id
     
+    # ID Komutu
     if message.text:
         cmd = message.text.lower().split('@')[0].strip()
         if cmd in ["/id", "id"]:
@@ -163,7 +163,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "Bomboclat V78: Peer Harmony Live! 🚀", 200
+def main(): return "Bomboclat V79: Stable Harmony Live! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
