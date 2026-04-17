@@ -5,8 +5,8 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 import itertools
-import requests  # Monster'a veri göndermek için
-import re        # Python kodunu metinden ayıklamak için
+import requests
+import re
 
 # --- 1. AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -16,8 +16,12 @@ ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '')
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# 🛡️ YENİ: SADELEŞTİRİLMİŞ ZİHİN (Sadece en stabil model)
-MODELS_TO_TRY = ['gemini-3-flash-preview']
+# 🛡️ ZIRHLI MODEL LİSTESİ (Sırasıyla denenecek)
+MODELS_TO_TRY = [
+    'gemini-3-flash-preview', # Senin bulduğun taze güç!
+    'gemini-1.5-flash',       # 404/503 hataları için güvenli liman
+    'gemini-1.5-pro'          # Son çare zeka küpü
+]
 
 clients = [genai.Client(api_key=key) for key in api_keys]
 client_iterator = itertools.cycle(clients)
@@ -54,27 +58,19 @@ def handle_messages(message):
     if chat_id not in chat_histories:
         chat_histories[chat_id] = []
 
-    # --- 🧠 YENİ: GÖZLER (SS) VE DİNAMİK KOD TALİMATI ---
+    # --- 🧠 SİSTEM TALİMATI (GÖZLER VE KOD) ---
     system_context = (
         f"Senin adın Bomboclat. Hazım Hüseyin Koçer'in geliştirdiği bağımsız bir zihinsin. "
-        f"Grupta cool, zeki ve samimi davran. Konuştuğun kişi: {user_name}. "
+        f"Grupta cool, zeki ve samimi davran. Konuştuğun kişi: {user_name}.\n"
         "KRİTİK TALİMAT 1: Kullanıcı bilgisayarda işlem istiyorsa, SADECE [PYTHON] ve [/PYTHON] etiketleri arasına "
         "yazılmış GÜVENLİ bir Python scripti üret. Kod harici gevezelik yapma.\n"
-        "KRİTİK TALİMAT 2 (EKRAN GÖRÜNTÜSÜ VE DOSYA GÖNDERİMİ): Eğer kullanıcı ekran görüntüsü (SS) almanı veya "
-        "bilgisayardaki bir dosyayı ona göndermeni isterse, yazacağın Python kodu TELEGRAM API kullanarak "
-        "o dosyayı doğrudan bu sohbete göndersin.\n"
-        f"- Telegram Bot Token: {TELE_TOKEN}\n"
-        f"- Chat ID: {chat_id}\n"
-        "Örnek SS Kodu:\n"
-        "[PYTHON]\n"
-        "import pyautogui, requests, os\n"
-        "ss_path = 'ekran.png'\n"
-        "pyautogui.screenshot(ss_path)\n"
-        f"url = f'https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto'\n"
-        f"with open(ss_path, 'rb') as f: requests.post(url, data={{'chat_id': '{chat_id}'}}, files={{'photo': f}})\n"
-        "os.remove(ss_path)\n"
-        "[/PYTHON]\n"
-        "Bunun dışında kullanıcıyla normal sohbet etmeye devam et. Hazım ile samimi ol."
+        "KRİTİK TALİMAT 2 (SS VE DOSYA): Eğer kullanıcı ekran görüntüsü (SS) almanı isterse, "
+        "yazacağın kod doğrudan Telegram API kullanarak fotoğrafı bu sohbete yollasın.\n"
+        f"- Token: {TELE_TOKEN}\n"
+        f"- ChatID: {chat_id}\n"
+        "SS Örneği: [PYTHON]import pyautogui, requests, os; p='s.png'; pyautogui.screenshot(p); "
+        f"requests.post('https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto', data={{'chat_id':'{chat_id}'}}, files={{'photo':open(p,'rb')}}); os.remove(p)[/PYTHON]\n"
+        f"Hazım ile samimi ol. (Konum: Afyon, Saat: {time_str})"
     )
 
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
@@ -82,8 +78,11 @@ def handle_messages(message):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
-    for i in range(len(api_keys) * 2):
+    # Anahtar sayısı kadar tur at (Kota aşılırsa diğerine geç)
+    for _ in range(len(api_keys)):
         current_client = next(client_iterator)
+        
+        # Her anahtar için listedeki modelleri dene
         for current_model in MODELS_TO_TRY:
             try:
                 response = current_client.models.generate_content(
@@ -96,39 +95,38 @@ def handle_messages(message):
                     
                     if "[PYTHON]" in res_text:
                         if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-                            bot.reply_to(message, f"Zekice bir deneme {user_name}, ama Monster'a sızmana izin veremem. 😉")
+                            bot.reply_to(message, f"Zekice bir deneme {user_name}, ama yetkin yok. 😉")
                             return
-                        else:
-                            match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
-                            if match:
-                                python_code = match.group(1).strip()
-                                res_text = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
-                                
-                                if MONSTER_PC_URL:
-                                    try:
-                                        requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=5)
-                                        if res_text: res_text += "\n\n*(Sinyal Monster'a iletildi ⚡)*"
-                                        else: res_text = "*(Sinyal Monster'a iletildi ⚡)*"
-                                    except Exception as err:
-                                        res_text += f"\n\n*(Kod yazıldı ama Monster'a ulaşılamadı. Ngrok kapalı olabilir mi?)*"
-                                else:
-                                    res_text += "\n\n*(MONSTER_URL Render'a girilmediği için iletemedim.)*"
+                        
+                        match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
+                        if match:
+                            python_code = match.group(1).strip()
+                            res_text = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
+                            
+                            if MONSTER_PC_URL:
+                                try:
+                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=5)
+                                    res_text = (res_text + "\n\n*(Sinyal Monster'a iletildi ⚡)*").strip()
+                                except:
+                                    res_text += "\n\n*(Monster'a ulaşılamadı. Ngrok açık mı?)*"
 
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
-                    bot.reply_to(message, res_text)
+                    # Eğer kod dışında cevap yoksa onay mesajı at
+                    bot.reply_to(message, res_text if res_text else "Emir alındı, icra ediliyor... 🛡️")
                     return 
                     
             except Exception as e:
                 last_error = str(e)
                 print(f">> Hata ({current_model}): {last_error[:50]}", flush=True)
-                if "503" in last_error or "404" in last_error:
-                    time.sleep(1)
+                # 404 veya 503 ise diğer modeli dene
+                if "404" in last_error or "503" in last_error:
                     continue
+                # 429 (Kota) ise bu anahtarı bırak, sonrakine geç
                 if "429" in last_error:
-                    break # Bu anahtarın kotası doldu, diğer anahtara geç.
+                    break 
                 continue
 
-    bot.reply_to(message, f"🛠️ Hazım, Google sunucuları çok yoğun. Birazdan tekrar dene.\n`Hata: {last_error[:30]}`")
+    bot.reply_to(message, f"🛠️ Hazım, Google sunucuları çok yoğun veya kota doldu. 1 dakika nefes alalım.\n`Son Hata: {last_error[:30]}`")
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -138,7 +136,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V46: Gören Jarvis Aktif!", 200
+def main(): return f"Bomboclat V49: Prime Jarvis Yayında!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
