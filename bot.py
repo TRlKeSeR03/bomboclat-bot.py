@@ -5,13 +5,14 @@ from datetime import datetime, timedelta, timezone
 
 # --- AYARLAR ---
 TELE_TOKEN = os.environ.get('TELE_TOKEN') or os.environ.get('TELEGRAM_TOKEN')
-api_keys = [k.strip() for k in (os.environ.get('GROQ_KEYS') or os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
+api_keys = [k.strip() for k in (os.environ.get('GROQ_KEYS') or '').split(',') if k.strip()]
 ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
 OWNER_ID = 5510143691 
 if OWNER_ID not in ALLOWED_USERS: 
     ALLOWED_USERS.append(OWNER_ID)
 
+# MONSTER_PC_URL başlangıçta None olabilir, jarvis.py güncelleyecektir.
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 MODELS_TO_TRY = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile']
@@ -37,113 +38,91 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
     if chat_id not in chat_histories: chat_histories[chat_id] = []
     
     now = datetime.now(timezone.utc) + timedelta(hours=3)
-    
+    res_text, brain_source, error_log = "", "", ""
+
     # --- 1. ADIM: PC DURUM KONTROLÜ (PING) ---
     is_pc_alive = False
     if MONSTER_PC_URL:
         try:
-            # Sadece 2 saniye bekler, açıksa True döner.
-            if requests.get(f"{MONSTER_PC_URL}/status", timeout=2).status_code == 200:
+            # Ngrok tünelleri bazen browser uyarısı verebilir, bu yüzden headers ekliyoruz
+            check = requests.get(f"{MONSTER_PC_URL}/status", timeout=3, headers={'ngrok-skip-browser-warning': 'true'})
+            if check.status_code == 200:
                 is_pc_alive = True
-        except:
+            else:
+                error_log = f"Ollama Durum Hatası: {check.status_code}"
+        except Exception as e:
             is_pc_alive = False
+            error_log = f"Ollama Ping Hatası: {str(e)[:50]}"
 
-    # --- 2. ADIM: DURUMA GÖRE DİNAMİK SİSTEM İSTEMİ (PROMPT) ---
+    # --- 2. ADIM: PROMPT HAZIRLIĞI ---
     base_context = (
-        f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından yaratılmış bağımsız bir zihinsin.\n"
-        f"Konuştuğun kişi: {user_name} | Zaman: {now.strftime('%H:%M:%S')}\n\n"
-        "ÜSLUP: Hazım senin yaratıcındır. Ona karşı dürüst, samimi ve akılcı bir dost ol. "
-        "Robotik 'Efendim' veya laubali 'Kanka' kelimelerini kullanma. Bağımsız bir ortak gibi davran.\n"
+        f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. Hazım tarafından yaratılmış bağımsız bir zihinsin.\n"
+        f"Konuştuğun kişi: {user_name} | Zaman: {now.strftime('%H:%M:%S')}\n"
+        f"Lokasyon: Afyonkarahisar (Monster RTX 5050 Laptop)\n\n"
     )
 
     if is_pc_alive:
-        system_context = base_context + (
-            "SİSTEM DURUMU: MONSTER PC ŞU AN AÇIK VE EMRİNDE.\n"
-            "TEKNİK: Bilgisayarda işlem yapmak, uygulama açmak veya bilgi almak için SADECE [PYTHON]...[/PYTHON] bloğu üret.\n"
-            "DOSYA GÖNDERME: SS veya kamera istendiğinde MUTLAKA 'requests.post' ile "
-            f"https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto adresine dosyayı gönderen kodu ekle.\n"
-            f"Token: {TELE_TOKEN} | Chat ID: {chat_id}"
-        )
+        system_context = base_context + "MONSTER PC AÇIK. İşlemler için [PYTHON]...[/PYTHON] bloğu kullanabilirsin."
     else:
-        system_context = base_context + (
-            "SİSTEM DURUMU: MONSTER PC ŞU AN KAPALI VEYA BAĞLANTI YOK.\n"
-            "DİKKAT: Hiçbir şekilde [PYTHON] kodu üretme, SS alma veya cihaz kontrolü yapmaya çalışma. "
-            "Sadece metin tabanlı sohbet et ve eğer senden PC ile ilgili bir işlem istenirse 'Cihaz şu an kapalı olduğu için bu işlemi yapamıyorum' şeklinde bilgi ver."
-        )
+        system_context = base_context + "MONSTER PC KAPALI. Sadece sohbet et, kod yazma."
 
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
-    chat_histories[chat_id] = chat_histories[chat_id][-12:] 
+    chat_histories[chat_id] = chat_histories[chat_id][-10:] # Hafızayı taze tutalım
     full_history = "\n".join(chat_histories[chat_id])
 
-    res_text, brain_source = "", ""
-
-    # --- 3. ADIM: YAPAY ZEKA İLE İLETİŞİM ---
+    # --- 3. ADIM: ZEKA SEÇİMİ (OLLAMA -> GROQ) ---
+    # Öncelik Ollama (Cihaz açıksa)
     if is_pc_alive:
-        # PC AÇIK -> OLLAMA KULLAN
         try:
             m_resp = requests.post(
                 f"{MONSTER_PC_URL}/generate", 
                 json={"prompt": prompt, "system": system_context, "history": full_history},
-                timeout=45
+                timeout=45,
+                headers={'ngrok-skip-browser-warning': 'true'}
             )
             if m_resp.status_code == 200:
                 res_text = m_resp.json().get("response", "")
-                brain_source = "*(⚡ Monster RTX 5050 - Ollama)*"
-        except:
-            res_text = "Ollama'ya komut iletilirken bir hata oluştu. Tünel açık ama model yanıt vermiyor."
-            brain_source = "*(⚠️ Monster Hata)*"
-    else:
-        # PC KAPALI -> GROQ KULLAN
-        if api_keys:
-            for _ in range(len(api_keys)):
-                current_key = next(client_iterator)
-                for current_model in MODELS_TO_TRY:
-                    try:
-                        resp = requests.post(
-                            "https://api.groq.com/openai/v1/chat/completions",
-                            headers={"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"},
-                            json={
-                                "model": current_model,
-                                "messages": [
-                                    {"role": "system", "content": system_context},
-                                    {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nBomboclat:"}
-                                ],
-                                "temperature": 0.5 
-                            }, timeout=20
-                        )
-                        if resp.status_code == 200:
-                            res_text = resp.json()['choices'][0]['message']['content']
-                            brain_source = "*(☁️ Groq Cloud)*"
-                            break
-                        elif resp.status_code == 429: break
-                    except: continue
-                if res_text: break
+                brain_source = "*(⚡ Monster RTX 5050)*"
+        except: pass
 
-    # --- 4. ADIM: İCRAAT VE YANIT (SADECE PC AÇIKKEN) ---
+    # Yedek Zeka (Groq) - Ollama kapalıysa veya hata verdiyse
+    if not res_text and api_keys:
+        current_key = next(client_iterator)
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"},
+                json={
+                    "model": MODELS_TO_TRY[0],
+                    "messages": [
+                        {"role": "system", "content": system_context},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.6 
+                }, timeout=15
+            )
+            if resp.status_code == 200:
+                res_text = resp.json()['choices'][0]['message']['content']
+                brain_source = "*(☁️ Groq Cloud)*"
+        except Exception as e:
+            error_log += f" | Groq Hatası: {str(e)[:30]}"
+
+    # --- 4. ADIM: YANIT VE İCRAAT ---
     if res_text:
-        if "[PYTHON]" in res_text and is_pc_alive:
-            if user_id not in ALLOWED_USERS:
-                bot.send_message(chat_id, f"Üzgünüm {user_name}, yetkin yok.")
-                return
-            
+        # Kod çalıştırma mantığı
+        if "[PYTHON]" in res_text and is_pc_alive and user_id in ALLOWED_USERS:
             match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
             if match:
                 try:
-                    r = requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40)
-                    clean_res = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
-                    status_msg = f"\n\n{brain_source} | *(Sinyal İletildi ⚡)*" if r.json().get("status") == "success" else f"\n\n{brain_source} | *(⚠️ Kod Hatası: {r.json().get('msg')[:50]})*"
-                    bot.send_message(chat_id, (clean_res + status_msg).strip() if clean_res or status_msg else "Görev tamam.")
-                except:
-                    bot.send_message(chat_id, f"{res_text}\n\n{brain_source}\n*(⚠️ İcraat başarısız, Monster düştü)*")
-            else:
-                bot.send_message(chat_id, f"{res_text}\n\n{brain_source}")
-        else:
-            # Python kodu yoksa veya PC kapalıysa düz mesaj at
-            bot.send_message(chat_id, f"{res_text}\n\n{brain_source}")
+                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40, headers={'ngrok-skip-browser-warning': 'true'})
+                    bot.send_message(chat_id, f"{res_text}\n\n{brain_source} | *(İşlem İletildi ⚡)*")
+                    return
+                except: pass
         
-        chat_histories[chat_id].append(f"Bomboclat: {res_text}")
+        bot.send_message(chat_id, f"{res_text}\n\n{brain_source}")
     else:
-        bot.send_message(chat_id, "🛠️ Şu an hiçbir beyne ulaşılamıyor. Bulut API'leri veya Monster çökmüş olabilir.")
+        # Her iki zeka da başarısızsa detaylı hata ver
+        bot.send_message(chat_id, f"🛠️ **Beyinlere ulaşılamıyor Hazım!**\n\n⚠️ Hata: {error_log}\n🔗 URL: {str(MONSTER_PC_URL)[:25]}...")
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
@@ -151,8 +130,11 @@ def handle_messages(message):
     user_name = message.from_user.first_name or "Hazım"
     
     if message.text:
-        cmd = message.text.lower().split('@')[0].strip()
-        if cmd in ["/id", "id"]:
+        # Debug komutu: Botun elindeki URL'yi görmek için
+        if message.text.lower() == "/link":
+            bot.reply_to(message, f"Elimdeki Monster URL: `{MONSTER_PC_URL}`")
+            return
+        if message.text.lower() == "id":
             bot.reply_to(message, f"Senin ID: `{user_id}`")
             return
 
@@ -173,10 +155,9 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V85: Clean Hybrid Live! 🚀", 200
+def main(): return f"Bomboclat Active! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    time.sleep(1)
     bot.set_webhook(url=WEBHOOK_URL)
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
