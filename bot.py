@@ -72,7 +72,7 @@ def handle_messages(message):
 
     if chat_id not in chat_histories: chat_histories[chat_id] = []
 
-    # --- 🧠 V60: DENGELİ & BAĞIMSIZ YÖNETİM ZİHNİ TALİMATI (GÜNCELLENDİ) ---
+    # --- 🧠 V63: DENGELİ & BAĞIMSIZ YÖNETİM ZİHNİ TALİMATI (VİZYON EKLENDİ) ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından "
         "yaratılmış, bağımsız bir iradeye sahip yönetim birimisin. "
@@ -92,9 +92,11 @@ def handle_messages(message):
         
         "KOMUT PROTOKOLÜ: İşlem (SS, dosya, program) istendiğinde SADECE [PYTHON]...[/PYTHON] "
         "bloğu üret. Kod harici gevezelik yapma, direkt icraata geç.\n"
-        "ÖZEL TALİMATLAR:\n"
-        "1. DOSYA: En yeni dosya istendiğinde, os.path.getmtime ile gerçeğe uygun, tarihe göre sıralama yap.\n"
-        "2. VİDEO: Video kaydı istendiğinde TELEGRAM DESTEĞİ İÇİN KESİNLİKLE 'mp4v' kodeki ve '.mp4' uzantısı kullan (Örn: cv2.VideoWriter_fourcc(*'mp4v')).\n\n"
+        "ÖZEL TALİMATLAR (MONSTER PC İÇİN):\n"
+        "1. Monster PC'de 'telebot' YOKTUR! Eylemleri SADECE 'requests.post' ile Telegram API üzerinden yolla.\n"
+        "2. SS ALMAK: pyautogui ile kaydet, open() ile oku ve 'sendPhoto' API'sine POST et.\n"
+        "3. DOSYA: os.path.getmtime ile en yeni dosya sıralaması yap.\n"
+        "4. VİDEO: KESİNLİKLE 'mp4v' kodeki ve '.mp4' uzantısı kullan.\n\n"
         
         f"- Token: {TELE_TOKEN}\n"
         f"- Chat ID: {chat_id}\n\n"
@@ -134,10 +136,15 @@ def handle_messages(message):
                             
                             if MONSTER_PC_URL:
                                 try:
-                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=20) # Video için süre artırıldı
-                                    res_text = (res_text + "\n\n*(Sinyal Monster'a iletildi ⚡)*").strip()
-                                except:
-                                    res_text += f"\n\n*(Monster'a ulaşılamadı. Güncel adres: {MONSTER_PC_URL})*"
+                                    # 🛠️ DÜZELTME: Monster'ın hatalarını Telegram'a aktaran Debug Sistemi
+                                    r = requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=20) 
+                                    result_data = r.json()
+                                    if result_data.get("status") == "error":
+                                        res_text += f"\n\n*(⚠️ Monster'da Kod Hatası: {result_data.get('msg')})*"
+                                    else:
+                                        res_text += "\n\n*(Sinyal İletildi ve Görev Tamamlandı ⚡)*"
+                                except Exception as req_e:
+                                    res_text += f"\n\n*(Monster Bağlantı Hatası: {req_e})*"
                             else:
                                 res_text += "\n\n*(Hata: Monster URL henüz bildirilmedi!)*"
 
@@ -147,16 +154,15 @@ def handle_messages(message):
                     
             except Exception as e:
                 last_error = str(e)
-                # 🛡️ 429 (Resource Exhausted) tespiti
+                # 🛠️ DÜZELTME: Zırhlı Model Geçiş Algoritması
+                if "404" in last_error or "503" in last_error:
+                    continue # Diğer modele geçmeyi dene
+                
                 if "429" in last_error or "quota" in last_error.lower() or "exhausted" in last_error.lower():
                     print(f"⚠️ Kota doldu, sonraki API anahtarına geçiliyor...", flush=True)
-                    break # Bu anahtar bitti, iç döngüden çıkıp bir sonraki client'a geç.
+                    break # Bu model döngüsünü kır, anahtar değiştir
                 
-                # 404 veya 503 ise sonraki modeli dene
-                if "404" in last_error or "503" in last_error:
-                    continue
-                
-                continue # Diğer hatalarda devam et
+                continue # Diğer bilinmeyen hatalarda modele devam et
 
     bot.reply_to(message, f"🛠️ Tüm API anahtarları veya Google sunucuları meşgul. Biraz bekleyip tekrar dene Hazım.\n`Hata: {last_error[:30]}`")
 
@@ -168,7 +174,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V60: The Prime Directive Live!", 200
+def main(): return f"Bomboclat V63: Core Debug & Model Rotation Live!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
