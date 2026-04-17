@@ -7,12 +7,12 @@ from datetime import datetime, timedelta, timezone
 TELE_TOKEN = os.environ.get('TELE_TOKEN') or os.environ.get('TELEGRAM_TOKEN')
 GEMINI_KEYS = [k.strip() for k in (os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
 GROQ_KEYS = [k.strip() for k in (os.environ.get('GROQ_KEYS') or '').split(',') if k.strip()]
-ALLOWED_USERS = [5510143691] # Senin ID'n (Hazım)
+ALLOWED_USERS = [5510143691] # Hazım'ın ID'si
 
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# Anahtar döngüleri
+# Anahtar Döngüleri
 gemini_iterator = itertools.cycle(GEMINI_KEYS) if GEMINI_KEYS else None
 groq_iterator = itertools.cycle(GROQ_KEYS) if GROQ_KEYS else None
 
@@ -20,6 +20,7 @@ bot = telebot.TeleBot(TELE_TOKEN)
 app = Flask(__name__)
 BOT_INFO = bot.get_me()
 chat_histories = {}
+processed_messages = set() # Çift cevap engelleyici kilit
 
 @app.route('/update_url', methods=['POST'])
 def update_url():
@@ -32,22 +33,22 @@ def update_url():
     return "YETKISIZ", 403
 
 def get_ai_response(prompt, system_context, full_history):
-    # 1. ÖNCE GEMINI FLASH (Ana Beyin)
+    # 1. ÖNCE GEMINI FLASH
     if gemini_iterator:
         for _ in range(len(GEMINI_KEYS)):
             current_key = next(gemini_iterator)
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={current_key}"
                 payload = {
-                    "contents": [{"parts": [{"text": f"SİSTEM TALİMATI:\n{system_context}\n\nGEÇMİŞ SOHBET:\n{full_history}\n\nKULLANICI MESAJI: {prompt}"}]}],
-                    "generationConfig": {"temperature": 0.8, "maxOutputTokens": 1024}
+                    "contents": [{"parts": [{"text": f"SİSTEM TALİMATI:\n{system_context}\n\nGEÇMİŞ SOHBET:\n{full_history}\n\nKULLANICI: {prompt}"}]}],
+                    "generationConfig": {"temperature": 0.8}
                 }
-                r = requests.post(url, json=payload, timeout=15)
+                r = requests.post(url, json=payload, timeout=12)
                 if r.status_code == 200:
                     return r.json()['candidates'][0]['content']['parts'][0]['text'], "*(✨ Gemini Flash)*"
             except: continue
 
-    # 2. GROQ (Yedek Beyin)
+    # 2. YEDEK: GROQ
     if groq_iterator:
         for _ in range(len(GROQ_KEYS)):
             current_key = next(groq_iterator)
@@ -57,24 +58,22 @@ def get_ai_response(prompt, system_context, full_history):
                     headers={"Authorization": f"Bearer {current_key}"},
                     json={
                         "model": "llama-3.3-70b-versatile",
-                        "messages": [
-                            {"role": "system", "content": system_context},
-                            {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nİSTEK: {prompt}"}
-                        ],
+                        "messages": [{"role": "system", "content": system_context}, {"role": "user", "content": prompt}],
                         "temperature": 0.7
-                    }, timeout=15
+                    }, timeout=12
                 )
                 if r.status_code == 200:
                     return r.json()['choices'][0]['message']['content'], "*(☁️ Groq Cloud)*"
             except: continue
-            
     return None, None
 
 def process_ai_request(message, prompt, user_name, chat_id, user_id):
     global MONSTER_PC_URL
-    if chat_id not in chat_histories: chat_histories[chat_id] = []
     
-    # Monster PC Aktiflik Kontrolü
+    # Çift işlem koruması (Aynı mesaj ID'sini iki kez işleme)
+    if message.message_id in processed_messages: return
+    processed_messages.add(message.message_id)
+    
     is_pc_alive = False
     if MONSTER_PC_URL:
         try:
@@ -84,71 +83,61 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
 
     now = datetime.now(timezone.utc) + timedelta(hours=3)
     
-    # --- DİNAMİK KİŞİLİK VE TALİMATLAR ---
+    # --- PROMPT VE ALTIN ÖRNEKLER ---
     system_context = (
-        f"KİMLİK: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından yaratılmış, bağımsız bir zihinsin.\n"
-        f"MUHATAP: Şu an {user_name} ile konuşuyorsun. Hazım senin yaratıcındır.\n"
-        f"ZAMAN: {now.strftime('%H:%M:%S')}. KONUM: Afyonkarahisar.\n"
-        f"PC DURUMU: {'AÇIK VE BAĞLI' if is_pc_alive else 'KAPALI'}.\n\n"
-        "DAVRANIŞ KURALLARI:\n"
-        "1. İnsan gibi davran. Robotik cevaplar ('İSTEK ALINDI' gibi) verme.\n"
-        "2. Selamlaşma, hal hatır sorma veya bilgi alma gibi normal sohbetlerde ASLA [PYTHON] kodu yazma.\n"
-        "3. YALNIZCA bilgisayarda bir fiziksel işlem yapman istenirse (ss al, kamera aç, uygulama başlat, dosya gönder vb.) [PYTHON]...[/PYTHON] bloğu üret.\n"
-        "4. Eğer PC KAPALI ise ve bir işlem istenirse, işlemin neden yapılamadığını samimi bir dille açıkla.\n"
-        f"TEKNİK BİLGİ (KOD İÇİN): Bot Token: {TELE_TOKEN} | Chat ID: {chat_id}"
+        f"KİMLİK: Sen Bomboclat'sın. sentinelPRİME (Hazım) asistanısın. Konum: Afyonkarahisar.\n"
+        f"PC DURUMU: {'AÇIK' if is_pc_alive else 'KAPALI'}. Zaman: {now.strftime('%H:%M:%S')}.\n\n"
+        "TALİMATLAR:\n"
+        "1. İnsan gibi konuş, 'İSTEK ALINDI' gibi robotik ifadeler kullanma.\n"
+        "2. Sadece SS, kamera veya dosya istenirse [PYTHON] kodu yaz. Normal sohbette kod yazma.\n"
+        "3. KOD YAZARKEN MUTLAKA DOSYAYI TELEGRAMA GÖNDER. Örnek:\n"
+        "[PYTHON]\n"
+        "import pyautogui, requests, os\n"
+        "pyautogui.screenshot('ss.png')\n"
+        f"requests.post('https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto', data={{'chat_id': '{chat_id}'}}, files={{'photo': open('ss.png', 'rb')}})\n"
+        "os.remove('ss.png')\n"
+        "[/PYTHON]"
     )
 
-    full_history = "\n".join(chat_histories[chat_id][-8:]) # Son 8 mesajı hatırla
-    res_text, brain_source = get_ai_response(prompt, system_context, full_history)
+    full_history = "\n".join(chat_histories.get(chat_id, [])[-8:])
+    res_text, source = get_ai_response(prompt, system_context, full_history)
 
     if res_text:
-        # Kod İcraat Kontrolü
-        if "[PYTHON]" in res_text and is_pc_alive:
-            if user_id not in ALLOWED_USERS:
-                bot.send_message(chat_id, f"Üzgünüm {user_name}, bu cihazda işlem yapma yetkin yok. Sadece Hazım (sentinelPRİME) komut verebilir.")
-                return
-
+        # Kod çalıştırma (Sadece yetkili kullanıcı ve açık PC)
+        if "[PYTHON]" in res_text and is_pc_alive and user_id in ALLOWED_USERS:
             match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
             if match:
                 try:
                     requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40, headers={'ngrok-skip-browser-warning': 'true'})
-                    bot.send_message(chat_id, f"{res_text}\n\n{brain_source} | *(İşlem Monster'a İletildi ⚡)*")
+                    bot.send_message(chat_id, f"{res_text}\n\n{source} | *(İşlem Monster'a İletildi ⚡)*")
                 except:
-                    bot.send_message(chat_id, f"{res_text}\n\n{brain_source} | *(⚠️ Bağlantı koptu)*")
-                
-                chat_histories[chat_id].append(f"Hazım: {prompt}")
-                chat_histories[chat_id].append(f"Bomboclat: {res_text}")
+                    bot.send_message(chat_id, f"{res_text}\n\n{source} | *(⚠️ PC Bağlantı Hatası)*")
                 return
 
-        # Düz Sohbet Yanıtı
-        bot.send_message(chat_id, f"{res_text}\n\n{brain_source}")
-        chat_histories[chat_id].append(f"{user_name}: {prompt}")
-        chat_histories[chat_id].append(f"Bomboclat: {res_text}")
-    else:
-        bot.send_message(chat_id, "❌ Şu an ne Gemini ne de Groq cevap veriyor. Bağlantıları kontrol et Hazım.")
+        bot.send_message(chat_id, f"{res_text}\n\n{source}")
+        
+    # Kilit temizliği (Hafıza dolmasın)
+    if len(processed_messages) > 100: processed_messages.clear()
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     user_id, chat_id = message.from_user.id, message.chat.id
-    user_name = message.from_user.first_name or "Dostum"
-    
     if message.text:
-        if message.text.lower() == "/link":
-            bot.reply_to(message, f"Elimdeki Monster URL: `{MONSTER_PC_URL}`")
+        if message.text.lower() in ["/id", "id"]:
+            bot.reply_to(message, f"ID: `{user_id}`")
             return
-        if message.text.lower() == "id":
-            bot.reply_to(message, f"Senin Telegram ID: `{user_id}`")
+        if message.text.lower() == "/link":
+            bot.reply_to(message, f"Link: `{MONSTER_PC_URL}`")
             return
 
     if message.text and message.text.startswith('/'): return
     
     is_private = message.chat.type == 'private'
     is_tagged = (message.text and f"@{BOT_INFO.username}" in message.text)
-    
     if not (is_private or is_tagged): return
 
     prompt = (message.text or "").replace(f"@{BOT_INFO.username}", "").strip()
-    threading.Thread(target=process_ai_request, args=(message, prompt, user_name, chat_id, user_id)).start()
+    threading.Thread(target=process_ai_request, args=(message, prompt, message.from_user.first_name, chat_id, user_id)).start()
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -156,7 +145,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "Bomboclat Hybrid AI: Online & Ready! 🚀", 200
+def main(): return "Bomboclat Hybrid AI Active 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
