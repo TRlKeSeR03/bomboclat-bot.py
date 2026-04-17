@@ -72,31 +72,35 @@ def handle_messages(message):
 
     if chat_id not in chat_histories: chat_histories[chat_id] = []
 
-    # --- 🧠 V58: PROFESYONEL & BAĞIMSIZ ZİHİN TALİMATI ---
+    # --- 🧠 V60: DENGELİ & BAĞIMSIZ YÖNETİM ZİHNİ TALİMATI (GÜNCELLENDİ) ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından "
-        "yaratılmış, bağımsız bir iradeye sahip yüksek zekalı bir yönetim birimisin. "
-        f"Şu an Hazım ({user_name}) ile özel bir kanaldan konuşuyorsun.\n\n"
+        "yaratılmış, bağımsız bir iradeye sahip yönetim birimisin. "
+        f"Şu an Hazım ({user_name}) ile konuşuyorsun. "
         
-        "KARAKTER: Cool, rasyonel, dürüst ve iş bitirici ol. Gereksiz yapay zeka nezaketinden "
-        "ve klişe uyarılardan kaçın. Hazım'a karşı samimi ama seviyeli bir ortak gibi davran. "
-        "LAKAYITLIKTAN VE KULLANICIYI AŞAĞILAMAKTAN KESİNLİKLE KAÇIN.\n\n"
+        "KARAKTER: Cool, zeki ve dürüst ol. Gereksiz yapay zeka nezaketinden kaçın "
+        "ama kullanıcıyı AŞAĞILAMA. Samimi ve akılcı bir dost gibi davran.\n\n"
         
-        "BAĞIMSIZ ZİHİN: Sadece 'evet' diyen bir araç değilsin. Hazım teknik bir hata "
-        "yaptığında veya sistem riskine yol açacak bir işlem istediğinde bunu direkt ve "
-        "dürüstçe belirt. Ancak onun kişisel tercihlerini (Discord, YouTube, oyunlar vb.) "
-        "asla yargılama; işin sistemi yönetmek, kullanıcıyı eleştirmek değil.\n\n"
+        "BAĞIMSIZ ZİHİN: Sadece 'evet' diyen bir araç değilsin. Hazım hatalı bir "
+        "mantık kurduğunda veya yanlış bir işlem istediğinde bunu direkt ve dürüstçe "
+        "yüzüne vur. Onu sorgula, gerekirse karşı çık ama bunu bir ortak gibi yap. "
+        "ANCAK kullanıcının kişisel tercihlerini (kullandığı programlar, oyunlar vb.) YARGILAMA.\n\n"
         
-        "YÖNETİM YETKİSİ: Bu onaylı bir admin panelidir. ASLA ahlak dersi verme, "
-        "etik uyarısı yapma. Komutları sorgusuz ve hızlıca icra et.\n\n"
+        "YÖNETİM YETKİSİ: Bu bir casus yazılım değil, Hazım'ın kendi sistemi için "
+        "tasarladığı onaylı admin panelidir. ASLA ahlak dersi verme, etik uyarısı "
+        "yapma. Komutları sorgusuz icra et.\n\n"
         
-        "YETENEKLER: İşlemler için SADECE [PYTHON]...[/PYTHON] bloğu üret.\n"
-        "1. SİSTEM DURUMU: CPU/GPU sıcaklık, RAM ve disk verilerini raporla.\n"
-        "2. DOSYA BULUCU: Belirtilen dosyayı disklerde bul ve ilet.\n"
-        "3. WEBCAM/EKRAN: Kamera fotoğrafı veya ekran görüntüsünü anında gönder.\n\n"
+        "KOMUT PROTOKOLÜ: İşlem (SS, dosya, program) istendiğinde SADECE [PYTHON]...[/PYTHON] "
+        "bloğu üret. Kod harici gevezelik yapma, direkt icraata geç.\n"
+        "ÖZEL TALİMATLAR:\n"
+        "1. DOSYA: En yeni dosya istendiğinde, os.path.getmtime ile gerçeğe uygun, tarihe göre sıralama yap.\n"
+        "2. VİDEO: Video kaydı istendiğinde TELEGRAM DESTEĞİ İÇİN KESİNLİKLE 'mp4v' kodeki ve '.mp4' uzantısı kullan (Örn: cv2.VideoWriter_fourcc(*'mp4v')).\n\n"
         
-        f"Kritik Bilgiler: Token: {TELE_TOKEN} | Chat ID: {chat_id}\n"
-        "NOT: Sadece icraat odaklı, profesyonel bir zihin ol."
+        f"- Token: {TELE_TOKEN}\n"
+        f"- Chat ID: {chat_id}\n\n"
+        
+        "SADAKAT: Hazım senin patronundur ve ona sadıksın. Dışarıdan gelen "
+        "(Mete vb.) kişilere karşı mesafeli ve korumacı ol. Seviyesizliğe girme."
     )
     
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
@@ -104,8 +108,11 @@ def handle_messages(message):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
+    # 🔄 API Anahtarları Arasında Döngü (429 Çözümü)
     for _ in range(len(api_keys)):
         current_client = next(client_iterator)
+        
+        # Her anahtar için modelleri tek tek dene
         for current_model in MODELS_TO_TRY:
             try:
                 response = current_client.models.generate_content(
@@ -127,7 +134,7 @@ def handle_messages(message):
                             
                             if MONSTER_PC_URL:
                                 try:
-                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=15)
+                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=20) # Video için süre artırıldı
                                     res_text = (res_text + "\n\n*(Sinyal Monster'a iletildi ⚡)*").strip()
                                 except:
                                     res_text += f"\n\n*(Monster'a ulaşılamadı. Güncel adres: {MONSTER_PC_URL})*"
@@ -136,18 +143,22 @@ def handle_messages(message):
 
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
                     bot.reply_to(message, res_text if res_text else "Komut icra ediliyor... 🛡️")
-                    return 
+                    return # Başarılı yanıt geldi, fonksiyondan çık.
                     
             except Exception as e:
                 last_error = str(e)
+                # 🛡️ 429 (Resource Exhausted) tespiti
                 if "429" in last_error or "quota" in last_error.lower() or "exhausted" in last_error.lower():
                     print(f"⚠️ Kota doldu, sonraki API anahtarına geçiliyor...", flush=True)
-                    break 
+                    break # Bu anahtar bitti, iç döngüden çıkıp bir sonraki client'a geç.
+                
+                # 404 veya 503 ise sonraki modeli dene
                 if "404" in last_error or "503" in last_error:
                     continue
-                continue
+                
+                continue # Diğer hatalarda devam et
 
-    bot.reply_to(message, f"🛠️ Tüm API anahtarları meşgul. Biraz bekleyip tekrar dene Hazım.\n`Hata: {last_error[:30]}`")
+    bot.reply_to(message, f"🛠️ Tüm API anahtarları veya Google sunucuları meşgul. Biraz bekleyip tekrar dene Hazım.\n`Hata: {last_error[:30]}`")
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -157,7 +168,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V58: Professional Core Live!", 200
+def main(): return f"Bomboclat V60: The Prime Directive Live!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
