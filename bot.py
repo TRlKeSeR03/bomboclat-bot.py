@@ -17,7 +17,7 @@ MONSTER_PC_URL = os.environ.get('MONSTER_URL')
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
 # 🛡️ YENİ: SADELEŞTİRİLMİŞ ZİHİN (Sadece en stabil model)
-MODELS_TO_TRY = ['gemini-1.5-flash']
+MODELS_TO_TRY = ['gemini-3-flash-preview']
 
 clients = [genai.Client(api_key=key) for key in api_keys]
 client_iterator = itertools.cycle(clients)
