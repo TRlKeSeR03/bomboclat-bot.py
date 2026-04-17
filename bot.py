@@ -52,7 +52,7 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
 
     # Kimlik Tespiti
     is_owner = (user_id == OWNER_ID)
-    user_status = "PATRON (Hazım)" if is_owner else f"MİSAFİR ({user_name})"
+    user_status = "(Hazım)" if is_owner else f"MİSAFİR ({user_name})"
     
     # --- 🧠 V74: IDENTITY SHIELD (KİMLİK KALKANI) ---
     system_context = (
@@ -62,7 +62,7 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
         f"📅 TARİH: {current_date} | ⏰ SAAT: {current_time}\n\n"
         "GİZLİLİK VE DAVRANIŞ:\n"
         f"1. Eğer karşındaki kişi Hazım DEĞİLSE, ona asla Monster PC durumu veya dosyalar hakkında bilgi sızdırma. Hazım'ın geçmişte ne sorduğunu başkasına anlatma.\n"
-        "2. KİMLİK: Herkese 'Hazım' deme. Karşındakinin ismine dikkat et. Hazım'a sadık, misafirlere (Mete vb.) karşı mesafeli ama cool ol.\n"
+        "2. KİMLİK: Herkese 'Hazım' deme. Karşındakinin ismine dikkat et. Hazım'a sadık, misafirlere karşı mesafeli ama cool ol.\n"
         "3. KOMUT PROTOKOLÜ: Sadece Hazım teknik komut (SS, dosya vb.) verdiğinde [PYTHON]...[/PYTHON] bloğu üret. Misafirlere kod üretme.\n"
         "4. BAĞIMSIZ ZİHİN: Sadece onaylayan bir araç değilsin. Hazım hatalıysa onu sorgula, gerekirse karşı çık.\n"
         f"- Token: {TELE_TOKEN} | - Chat ID: {chat_id}"
