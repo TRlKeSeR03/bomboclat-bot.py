@@ -9,7 +9,6 @@ import re
 import threading 
 
 # --- 1. AYARLAR ---
-# Render'daki değişken isimlerine göre (Esnek yapı)
 TELE_TOKEN = os.environ.get('TELE_TOKEN') or os.environ.get('TELEGRAM_TOKEN')
 api_keys = [k.strip() for k in (os.environ.get('GROQ_KEYS') or os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
 ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
@@ -22,8 +21,8 @@ if OWNER_ID not in ALLOWED_USERS:
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# Stabilite için model rotasyonu (8b modelleri daha hızlı ve az hata verir)
-MODELS_TO_TRY = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama3-8b-8192']
+# 🎯 SENİN İSTEDİĞİN MODEL ODAKLI LİSTE
+MODELS_TO_TRY = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile']
 client_iterator = itertools.cycle(api_keys)
 
 bot = telebot.TeleBot(TELE_TOKEN)
@@ -50,21 +49,20 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
     is_owner = (user_id == OWNER_ID)
     now = datetime.now(timezone.utc) + timedelta(hours=3)
 
-    # --- 🧠 V79: PEER HARMONY (AKILCI DOST) TALİMATI ---
+    # --- 🧠 V80: PEER HARMONY TALİMATI ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından yaratılmış bağımsız bir zihinsin.\n"
         f"Şu an konuştuğun kişi: {user_name} (ID: {user_id}) | Saat: {now.strftime('%H:%M:%S')}\n\n"
         "ÜSLUP VE KARAKTER:\n"
         "1. DOSTÇA VE AKILCI OL: Hazım senin yaratıcındır. Ona karşı dürüst, samimi ve akılcı bir dost tonu kullan. "
-        "Ancak 'Patron', 'Efendim' veya 'Kanka' gibi kelimeleri ASLA kullanma. Doğal ve cool ol.\n"
-        "2. ÖZ VE NET: Sürekli soru sorma, gereksiz nezaket yapma. Konu neyse ona odaklan.\n"
-        "3. BAĞIMSIZLIK: Hazım hatalıysa onu sorgula, dürüstçe fikrini söyle.\n\n"
+        "Aşırı resmiyetten veya aşırı laubalilikten kaçın. Doğal ve cool ol.\n"
+        "2. ÖZ VE NET: Gereksiz nezaket yapma. Konu neyse ona odaklan.\n"
+        "3. BAĞIMSIZLIK: Bir köle gibi davranma; Hazım hatalıysa onu sorgula.\n\n"
         "🔥 TEKNİK İCRAAT (ZORUNLU):\n"
-        "Hazım 'ss', 'kamera' veya 'dosya' istediğinde gevezelik yapmadan [PYTHON]...[/PYTHON] bloğu üret.\n"
-        "DOSYA GÖNDERME KODU (MUTLAKA OLMALI):\n"
-        "```python\nimport requests; \n# Dosya oluşturma (ss veya kamera) kodun...\n"
+        "Hazım 'ss', 'kamera' veya 'dosya' istediğinde hiç lafı uzatmadan [PYTHON]...[/PYTHON] bloğu üret.\n"
+        "DOSYA GÖNDERME KODU TASLAĞI:\n"
+        "```python\nimport requests; \n# Dosya oluşturma kodun...\n"
         f"with open('dosya.png', 'rb') as f: \n    requests.post('[https://api.telegram.org/bot](https://api.telegram.org/bot){TELE_TOKEN}/sendPhoto', data={{'chat_id': '{chat_id}'}}, files={{'photo': f}})\n```\n"
-        "Bu bloğu yazmazsan dosya gitmez. Sinyal iletildiğinde Monster bu kodu çalıştıracak.\n"
         f"Token: {TELE_TOKEN} | Chat ID: {chat_id}"
     )
     
@@ -78,7 +76,6 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
         bot.send_message(chat_id, "⚠️ Render'da API anahtarları tanımlanmamış!")
         return
 
-    # API Döngüsü
     for _ in range(len(api_keys)):
         current_key = next(client_iterator)
         for current_model in MODELS_TO_TRY:
@@ -102,7 +99,7 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                     
                     if "[PYTHON]" in res_text:
                         if user_id not in ALLOWED_USERS:
-                            bot.send_message(chat_id, f"Bu yetki sadece Hazım'da var {user_name}.")
+                            bot.send_message(chat_id, f"Yetkin yok {user_name}. 😉")
                             return
                         
                         match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
@@ -124,7 +121,7 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                     return 
                 elif resp.status_code == 429:
                     last_error = "Groq Hız Limiti (429)"
-                    break # Diğer anahtara geç
+                    break # Rate limit, sonraki anahtara geç
             except Exception as e:
                 last_error = f"Sistem Hatası: {str(e)[:30]}"
                 continue 
@@ -137,7 +134,6 @@ def handle_messages(message):
     user_name = message.from_user.first_name or "Hazım"
     chat_id = message.chat.id
     
-    # ID Komutu
     if message.text:
         cmd = message.text.lower().split('@')[0].strip()
         if cmd in ["/id", "id"]:
@@ -163,7 +159,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "Bomboclat V79: Stable Harmony Live! 🚀", 200
+def main(): return "Bomboclat V80: Versatile Focus Live! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
