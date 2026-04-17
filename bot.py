@@ -14,7 +14,7 @@ api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# Senin keşfettiğin o canavar model
+# 2026'nın canavarı. Eğer çok 429 alırsan 'gemini-1.5-flash'a çekebilirsin.
 MODEL_ID = 'gemini-2.0-flash' 
 
 clients = [genai.Client(api_key=key) for key in api_keys]
@@ -37,26 +37,26 @@ def handle_messages(message):
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
-    # YENİ NESİL SİSTEM TALİMATI: DAHA İNSANSI, DAHA AZ ROBOTİK
     system_context = (
-        "Sen Bomboclat'sın. Hazım'ın yakın bir arkadaşı ve fikir ortağısın. "
-        "Normal bir insan gibi, samimi ve dürüst konuş. 'Yapay zeka asistanı' kalıplarından kurtul. "
-        "Zaman ve konum bilgisini (Afyon, Saat: " + time_str + ") her mesajda tekrarlama, sadece gerekirse kullan. "
-        "Hazım'a karşı dürüst ol, yanlışlarını söyle ama bunu bir robot gibi değil, gerçek bir dost gibi yap. "
-        "Gerektiğinde Google araması yaparak güncel bilgileri kullanabilirsin."
+        "Sen Bomboclat'sın. Hazım'ın samimi ama eleştirel dostusun. "
+        "Yapay zeka gibi değil, gerçek bir insan gibi konuş. "
+        "Hazım'a karşı dürüst ol, gerekirse tartış. "
+        "Zaman: " + time_str + " (Afyon). Bu bilgiyi sadece gerekirse kullan."
     )
 
     last_error = ""
+    # Anahtar sayısı kadar deneme yapıyoruz
     for i in range(len(api_keys)):
         try:
             current_client = next(client_iterator)
             
-            # GOOGLE SEARCH (İnternet Erişimi) Entegrasyonu
+            # İNTERNET ERİŞİMLİ ÜRETİM
             response = current_client.models.generate_content(
                 model=MODEL_ID, 
                 contents=f"{system_context}\n\nHazım: {prompt}",
                 config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearchRetrieval())]
+                    tools=[types.Tool(google_search=types.GoogleSearchRetrieval())],
+                    temperature=0.7 # Biraz daha insani ve değişken cevaplar için
                 )
             )
             
@@ -66,13 +66,21 @@ def handle_messages(message):
                 
         except Exception as e:
             last_error = str(e)
-            print(f">> Hata: {last_error[:100]}", flush=True)
-            time.sleep(2)
-            continue
+            print(f">> Motor {i+1} Hatası: {last_error[:50]}...", flush=True)
+            
+            if "429" in last_error:
+                # Kota dolduysa 3 saniye bekle ve diğer anahtara geç
+                time.sleep(3)
+                continue
+            elif "404" in last_error:
+                # Model bulunamadıysa (ki düzelttik) hemen bildir
+                bot.reply_to(message, "🛠️ Model ismi yine uçtu, Hazım bir kontrol et.")
+                return
+            
+    # Eğer tüm anahtarlar biterse:
+    bot.reply_to(message, f"🛠️ Google ablukası çok sert Hazım. Tüm anahtarlar 429 yedi.\n\n`Mevzu: {last_error[:50]}...` \n(Birkaç dakika sonra tekrar dene.)")
 
-    bot.reply_to(message, f"🛠️ Bir sorun var Hazım, internete çıkarken takıldım sanırım.\n`{last_error[:50]}`")
-
-# Flask ve Webhook kısımları (Aynı kalıyor)
+# Flask ve Webhook (Aynı kalıyor)
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -81,7 +89,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "Bomboclat V26: İnternet Modu Aktif!", 200
+def main(): return "V27: Sabır ve Kurtarma Modu!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
