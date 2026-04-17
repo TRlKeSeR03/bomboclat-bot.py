@@ -1,6 +1,6 @@
 import telebot
 from google import genai
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -13,7 +13,9 @@ TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 api_keys = [k.strip() for k in (os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
 ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
+# ⚡ GLOBAL URL: Monster PC açıldığında burayı otomatik güncelleyecek
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
+
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
 # 🛡️ ZIRHLI MODEL LİSTESİ
@@ -32,8 +34,21 @@ BOT_INFO = bot.get_me()
 
 chat_histories = {}
 
+# --- 🛰️ YENİ: OTOMATİK URL GÜNCELLEME KAPISI ---
+@app.route('/update_url', methods=['POST'])
+def update_url():
+    global MONSTER_PC_URL
+    data = request.json
+    # Güvenlik Kontrolü: Monster'dan gelen secret, bot tokenı ile eşleşmeli
+    if data and data.get('secret') == TELE_TOKEN:
+        MONSTER_PC_URL = data.get('url')
+        print(f"🚀 MONSTER ADRESİ OTOMATİK GÜNCELLENDİ: {MONSTER_PC_URL}", flush=True)
+        return "URL_OK", 200
+    return "YETKISIZ_ERISIM", 403
+
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
+    global MONSTER_PC_URL
     user_id = message.from_user.id
     user_name = message.from_user.first_name or "Arkadaşım"
     
@@ -57,7 +72,7 @@ def handle_messages(message):
 
     if chat_id not in chat_histories: chat_histories[chat_id] = []
 
-    # --- 🧠 V53: GELİŞMİŞ YETENEKLER VE SİSTEM TALİMATI ---
+    # --- 🧠 V54: GELİŞMİŞ YETENEKLER VE SİSTEM TALİMATI ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından "
         "yaratılmış, bağımsız ve üstün zekalı bir yönetim birimisin. "
@@ -105,10 +120,13 @@ def handle_messages(message):
                             
                             if MONSTER_PC_URL:
                                 try:
-                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=10)
+                                    # Artık güncel olan MONSTER_PC_URL kullanılıyor
+                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=15)
                                     res_text = (res_text + "\n\n*(Sinyal Monster'a iletildi ⚡)*").strip()
                                 except:
-                                    res_text += "\n\n*(Monster'a ulaşılamadı!)*"
+                                    res_text += f"\n\n*(Monster'a ulaşılamadı. Güncel adres: {MONSTER_PC_URL})*"
+                            else:
+                                res_text += "\n\n*(Hata: Monster URL henüz bildirilmedi!)*"
 
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
                     bot.reply_to(message, res_text if res_text else "Komut icra ediliyor... 🛡️")
@@ -130,7 +148,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V53: The All-Seeing Admin Live!", 200
+def main(): return f"Bomboclat V54: Otomatik Tünel & Admin Live!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
