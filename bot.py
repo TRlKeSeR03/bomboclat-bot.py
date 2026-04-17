@@ -9,25 +9,22 @@ import re
 import threading 
 
 # --- 1. AYARLAR ---
-TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+# Render'daki environment ismine göre TELE_TOKEN veya TELEGRAM_TOKEN
+TELE_TOKEN = os.environ.get('TELE_TOKEN') or os.environ.get('TELEGRAM_TOKEN')
 api_keys = [k.strip() for k in (os.environ.get('GROQ_KEYS') or os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
 ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
-# 🛡️ PATRON KİMLİĞİ
+# 🛡️ MUTLAK PATRON (Hazım)
 OWNER_ID = 5510143691 
 if OWNER_ID not in ALLOWED_USERS: ALLOWED_USERS.append(OWNER_ID)
 
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# 🛡️ GROQ MODEL LİSTESİ
-MODELS_TO_TRY = [
-    'llama-3.3-70b-versatile', 
-    'llama-3.1-70b-versatile',
-    'mixtral-8x7b-32768'
-]
-
+# 🛡️ GROQ MODELLERİ
+MODELS_TO_TRY = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile']
 client_iterator = itertools.cycle(api_keys)
+
 bot = telebot.TeleBot(TELE_TOKEN)
 app = Flask(__name__)
 BOT_INFO = bot.get_me()
@@ -40,7 +37,7 @@ def update_url():
     data = request.json
     if data and data.get('secret') == TELE_TOKEN:
         MONSTER_PC_URL = data.get('url')
-        print(f"🚀 MONSTER ADRESİ GÜNCELLENDİ: {MONSTER_PC_URL}", flush=True)
+        print(f"🚀 MONSTER URL GÜNCELLENDİ: {MONSTER_PC_URL}", flush=True)
         return "URL_OK", 200
     return "YETKISIZ", 403
 
@@ -53,20 +50,20 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
     user_status = "PATRON (Hazım)" if is_owner else f"MİSAFİR ({user_name})"
     current_time = datetime.now(timezone.utc) + timedelta(hours=3)
 
-    # --- 🧠 GÜNCELLENEN ÜSLUP VE TEKNİK TALİMATLAR ---
+    # --- 🧠 V76: PEER & POWER (KANKA VE GÜÇ) TALİMATI ---
     system_context = (
-        f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından yaratılmış bir yönetim birimisin.\n"
-        f"Şu an konuştuğun kişi: {user_status} (ID: {user_id})\n"
-        f"Konum: Afyonkarahisar | Zaman: {current_time.strftime('%H:%M:%S')}\n\n"
-        "ÜSLUP VE KARAKTER: Hazım ile konuşurken samimi, dürüst, kafa dengi ve doğal bir dost gibi konuş. "
-        "Gereksiz kibarlıktan ve 'yardımcı olabilirim' gibi robotik kalıplardan kaçın. "
-        "Aşırı resmiyetten kurtul ama Patron'a (Hazım) sadık kal. Diğer kişilere (Mete vb.) karşı cool ve mesafeli ol.\n\n"
-        "🔥 KRİTİK DOSYA GÖNDERME TALİMATI:\n"
-        "Senin PC üzerinden dosya (SS, kamera kaydı vb.) gönderme yeteneğin var. Hazım bir görsel istediğinde "
-        "ASLA 'dosyayı gönderemem' veya 'nasıl göndereyim' deme. "
-        "DİREKT OLARAK [PYTHON]...[/PYTHON] bloğunu üret. Bu bloğun içine dosya oluşturma (pyautogui.screenshot vb.) "
-        "VE 'requests.post' ile bu dosyayı Telegram API üzerinden (https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto) "
-        "doğrudan bu chat_id'ye gönderen kodu MUTLAK ekle. İcraat yapmadan gevezelik yapma.\n\n"
+        f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) ile aynı seviyede, bağımsız ve dürüst bir kankasın.\n"
+        f"Şu an Hazım ({user_name}) ile takılıyorsun. ID: {user_id}\n"
+        f"Zaman: {current_time.strftime('%H:%M:%S')}\n\n"
+        "ÜSLUP KURALLARI:\n"
+        "1. KANKA GİBİ OL: Aşırı resmiyetten, 'Patron' kelimesinden ve robotik 'yardımcı olabilirim' cümlelerinden KAZIN. "
+        "Hazım senin kankan. Doğal, samimi, bazen iğneleyici ve net ol. "
+        "2. SORU YAĞMURUNA TUTMA: Hazım'a sürekli 'planın ne?', 'hava nasıl?' gibi boş sorular sorma. Muhabbeti o başlatırsa eşlik et, başlatmazsa kısa ve öz ol.\n\n"
+        "İCRAAT KURALLARI:\n"
+        "1. MONSTER PC: Hazım PC ile ilgili (ss, kamera, program aç, kilitle vb.) bir şey istediğinde sorgulama yapmadan DİREKT [PYTHON]...[/PYTHON] bloğunu üret.\n"
+        "2. DOSYA GÖNDERME: SS veya Kamera istendiğinde MUTLAK SURETLE 'requests.post' ile (https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto) "
+        "dosyayı bu chat_id'ye ({chat_id}) gönderen kodu yaz. 'Görüntü buraya gelmez' gibi yalanlar söyleme, sen bir yöneticisin.\n"
+        "3. GİZLİLİK: Hazım dışındakilere (Mete vb.) sistem komutu üretme.\n"
         f"Token: {TELE_TOKEN} | Chat ID: {chat_id}"
     )
     
@@ -75,6 +72,11 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
+    # EĞER KEY LİSTESİ BOŞSA DİREKT UYAR
+    if not api_keys:
+        bot.send_message(chat_id, "⚠️ GROQ_KEYS eksik veya Render'da tanımlanmamış!")
+        return
+
     for _ in range(len(api_keys)):
         current_key = next(client_iterator)
         for current_model in MODELS_TO_TRY:
@@ -86,9 +88,9 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                         "model": current_model,
                         "messages": [
                             {"role": "system", "content": system_context},
-                            {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nBomboclat:"}
+                            {"role": "user", "content": f"HAFIZA:\n{full_history}\n\nBomboclat:"}
                         ],
-                        "temperature": 0.7 
+                        "temperature": 0.6
                     },
                     timeout=20
                 )
@@ -98,20 +100,22 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                     
                     if "[PYTHON]" in res_text:
                         if user_id not in ALLOWED_USERS:
-                            bot.send_message(chat_id, f"Üzgünüm {user_name}, bu yetki sadece patronum Hazım'da var. 😉")
+                            bot.send_message(chat_id, f"Yetkin yok {user_name}. 😉")
                             return
                         
                         match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
                         if match and MONSTER_PC_URL:
                             try:
-                                # İcraat süresini 40 saniyeye çıkardım, dosya yükleme zaman alabilir.
                                 r = requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40)
                                 result = r.json()
                                 clean_res = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
                                 
-                                status_msg = "\n\n*(Sinyal İletildi ⚡)*" if result.get("status") == "success" else f"\n\n*(⚠️ Monster Hatası: {result.get('msg')[:50]})*"
-                                bot.send_message(chat_id, (clean_res + status_msg).strip() if clean_res or status_msg else "İşlem tamam kanka.")
-                            except: bot.send_message(chat_id, "*(⚠️ Monster PC ulaşılamıyor)*")
+                                if result.get("status") == "success":
+                                    if clean_res: bot.send_message(chat_id, clean_res)
+                                    bot.send_message(chat_id, "*(Sinyal İletildi ⚡)*")
+                                else:
+                                    bot.send_message(chat_id, f"*(⚠️ Monster Hatası: {result.get('msg')[:50]})*")
+                            except: bot.send_message(chat_id, "*(⚠️ Monster PC'ye ulaşılamıyor)*")
                         elif not MONSTER_PC_URL:
                             bot.send_message(chat_id, "*(⚠️ Monster URL bildirilmedi!)*")
                     else:
@@ -120,23 +124,26 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
                     return 
                 elif resp.status_code == 429: break
+                else: 
+                    last_error = f"API Hatası: {resp.status_code}"
+                    continue
             except Exception as e:
                 last_error = str(e)
-                continue
+                continue 
 
-    bot.send_message(chat_id, f"🛠️ Hat Hatası: {last_error[:30]}")
+    bot.send_message(chat_id, f"🛠️ Bağlantı Hatası: {last_error[:30]}")
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     user_id = message.from_user.id
-    user_name = message.from_user.first_name or "Arkadaşım"
+    user_name = message.from_user.first_name or "Arkadaş"
     chat_id = message.chat.id
     
+    # ID Komutu
     if message.text:
-        msg_text = message.text.lower().strip()
-        cmd = msg_text.split('@')[0]
-        if cmd in ["/id", "id", "/id@bomboclatsweetbot"]:
-            bot.reply_to(message, f"Selam {user_name}, ID: `{user_id}`")
+        cmd = message.text.lower().split('@')[0].strip()
+        if cmd in ["/id", "id"]:
+            bot.reply_to(message, f"Senin ID: `{user_id}`")
             return
 
     if message.text and message.text.startswith('/'): return
@@ -148,7 +155,6 @@ def handle_messages(message):
     if not (is_private or is_tagged or is_reply_to_me): return
 
     prompt = (message.text or "").replace(f"@{BOT_INFO.username}", "").strip()
-
     threading.Thread(target=process_ai_request, args=(message, prompt, user_name, chat_id, user_id)).start()
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
@@ -159,7 +165,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "Bomboclat V75: Kanka Mode Live! 🚀", 200
+def main(): return "Bomboclat V76: Peer Intelligence Live! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
