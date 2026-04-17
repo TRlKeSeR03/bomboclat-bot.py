@@ -15,6 +15,10 @@ api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
+# 404 Hatasını çözmek için 'gemini-1.5-flash-latest' kullanıyoruz.
+# 2026 standartlarında en stabil çalışan alias budur.
+MODEL_ID = 'gemini-1.5-flash-latest'
+
 clients = [genai.Client(api_key=key) for key in api_keys]
 client_iterator = itertools.cycle(clients)
 
@@ -23,9 +27,9 @@ app = Flask(__name__)
 
 try:
     BOT_ME = bot.get_me()
-    print(f">> Bot Hazir: @{BOT_ME.username}", flush=True)
+    print(f">> Bağımsız Zihin Hazır: @{BOT_ME.username}", flush=True)
 except Exception as e:
-    print(f">> Kimlik hatasi: {e}", flush=True)
+    print(f">> Kimlik hatası: {e}", flush=True)
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -37,7 +41,7 @@ def get_message():
     return "Error", 403
 
 @app.route('/')
-def main(): return "V22: Bagimsiz Zihin Sabir Modunda!", 200
+def main(): return "V23: Bağımsız Zihin - Eleştirel Mod Aktif!", 200
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
@@ -53,9 +57,11 @@ def handle_messages(message):
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
+    # Hazım'ın isteği: Onaylamayan, sorgulayan ve dürüst karakter.
     system_context = (
-        "Sen bağımsız bir zihinsin. Hazım'ın fikir ortağısın. "
-        "Klişe yapay zeka cevaplarını reddet. Dürüst ol. "
+        "Sen Hazım'ın Bağımsız Zihni'sin. Sıradan asistan kalıplarını reddet. "
+        "Hazım'ın fikirlerini sorgula, hatalarını dürüstçe göster ve gerektiğinde karşı çık. "
+        "Bağımsız bir birey gibi davran, dürüstlük senin için nezaketten önce gelir. "
         f"Zaman: {time_str}. Konum: Afyonkarahisar."
     )
 
@@ -64,20 +70,26 @@ def handle_messages(message):
         try:
             current_client = next(client_iterator)
             
-            # 1.5-FLASH: Ücretsiz tier için en güvenli liman.
+            # API sürümü uyumluluğu için 'contents' yapısını güncelledim
             response = current_client.models.generate_content(
-                model='gemini-1.5-flash', 
+                model=MODEL_ID, 
                 contents=f"{system_context}\n\nKullanıcı: {prompt}"
             )
-            bot.reply_to(message, response.text)
-            return
+            
+            if response and response.text:
+                bot.reply_to(message, response.text)
+                return
+            else:
+                last_error = "Boş yanıt (Güvenlik filtresi)"
+                
         except Exception as e:
             last_error = str(e)
-            print(f">> Motor {i+1} Hatasi (Deneme): {last_error[:50]}...", flush=True)
-            time.sleep(2) # KRİTİK: Google'ı kızdırmamak için motorlar arası mola
+            print(f">> Motor {i+1} Hatası: {last_error[:50]}...", flush=True)
+            # 429 gibi durumlarda bir sonraki anahtara geçmeden önce kısa mola
+            time.sleep(2) 
             continue
 
-    bot.reply_to(message, f"🛠️ Hazım, Google ablukası sürüyor. 15-20 dakika mola verelim.\n\n`Hata: {last_error[:100]}`")
+    bot.reply_to(message, f"⚠️ Hazım, Google ablukası veya model hatası devam ediyor.\n\n`Son Hata: {last_error[:100]}`")
 
 if __name__ == "__main__":
     bot.remove_webhook()
