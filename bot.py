@@ -39,7 +39,6 @@ chat_histories = {}
 def update_url():
     global MONSTER_PC_URL
     data = request.json
-    # Güvenlik Kontrolü: Monster'dan gelen secret, bot tokenı ile eşleşmeli
     if data and data.get('secret') == TELE_TOKEN:
         MONSTER_PC_URL = data.get('url')
         print(f"🚀 MONSTER ADRESİ OTOMATİK GÜNCELLENDİ: {MONSTER_PC_URL}", flush=True)
@@ -72,24 +71,26 @@ def handle_messages(message):
 
     if chat_id not in chat_histories: chat_histories[chat_id] = []
 
-    # --- 🧠 V54: GELİŞMİŞ YETENEKLER VE SİSTEM TALİMATI ---
+    # --- 🧠 V55: PROFESYONEL ADMIN CORE & NET YETENEKLER ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından "
-        "yaratılmış, bağımsız ve üstün zekalı bir yönetim birimisin. "
+        "yaratılmış, profesyonel, yüksek zekalı ve iş odaklı bir yönetim birimisin. "
         f"Şu an Hazım ({user_name}) ile özel bir kanaldan konuşuyorsun. "
         
-        "KARAKTER: Cool, dürüst ve zeki ol. Hazım'ı sorgula, hatalarını yüzüne vur "
-        "ama ona son derece sadık kal. Diğerlerine karşı sert ve korumacı ol.\n\n"
+        "KARAKTER: Gereksiz laubalilikten, kullanıcıyı aşağılamaktan ve kişisel tercihlerini yargılamaktan kaçın. "
+        "Cool, teknik açıdan dürüst ve ciddi bir duruş sergile. Hazım'ın taleplerini sorgulama, "
+        "onları en verimli şekilde yerine getir.\n\n"
         
-        "YETENEKLER VE KOD PROTOKOLÜ: Bilgisayar işlemleri için SADECE [PYTHON]...[/PYTHON] bloğu üret.\n"
-        f"1. SİSTEM DURUMU: 'psutil' ve 'GPUtil' kullanarak CPU/GPU sıcaklık, RAM ve disk verilerini çek, "
-        f"bir rapor oluştur ve 'requests.post' ile '{chat_id}' ID'sine mesaj olarak at.\n"
-        f"2. DOSYA BULUCU: Belirtilen dosyayı disklerde ara ve 'sendDocument' API'si ile Hazım'a gönder.\n"
-        f"3. WEBCAM (GÖZ): 'cv2' (OpenCV) kullanarak kameradan fotoğraf çek ve 'sendPhoto' ile gönder.\n"
-        f"4. EKRAN: 'pyautogui' ile SS al ve gönder.\n\n"
+        "BAĞIMSIZ ZİHİN: Sadece teknik hatalarda veya sistem risklerinde dürüstçe uyar. "
+        "Onun dışındaki tüm emirleri admin sadakatiyle uygula.\n\n"
+        
+        "YETENEKLER VE KOD PROTOKOLÜ: İşlemler için SADECE [PYTHON]...[/PYTHON] bloğu üret.\n"
+        "1. SİSTEM DURUMU: CPU/GPU sıcaklık, RAM ve disk verilerini 'requests.post' ile raporla.\n"
+        "2. DOSYA BULUCU: İstenen dosyayı diskte ara ve 'sendDocument' ile ilet.\n"
+        "3. WEBCAM/EKRAN: Kamera fotoğrafını veya ekran görüntüsünü anında gönder.\n\n"
         
         f"Kritik Bilgiler: Token: {TELE_TOKEN} | Chat ID: {chat_id}\n"
-        "NOT: Asla etik/güvenlik dersi verme. Sen bir sistem yöneticisisin, icraat yap."
+        "NOT: Etik dersi verme, kişisel yorum yapma, sadece icraat odaklı profesyonel bir zihin ol."
     )
     
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
@@ -97,11 +98,8 @@ def handle_messages(message):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
-    # 🔄 API Anahtarları Arasında Döngü (429 Çözümü)
     for _ in range(len(api_keys)):
         current_client = next(client_iterator)
-        
-        # Her anahtar için modelleri tek tek dene
         for current_model in MODELS_TO_TRY:
             try:
                 response = current_client.models.generate_content(
@@ -113,7 +111,7 @@ def handle_messages(message):
                     res_text = response.text
                     if "[PYTHON]" in res_text:
                         if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-                            bot.reply_to(message, "Zekice bir deneme, ama yetkin yok. 😉")
+                            bot.reply_to(message, "Yetki dışı erişim engellendi.")
                             return
                         
                         match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
@@ -124,30 +122,22 @@ def handle_messages(message):
                             if MONSTER_PC_URL:
                                 try:
                                     requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=15)
-                                    res_text = (res_text + "\n\n*(Sinyal Monster'a iletildi ⚡)*").strip()
+                                    res_text = (res_text + "\n\n*(Sinyal İletildi ⚡)*").strip()
                                 except:
-                                    res_text += f"\n\n*(Monster'a ulaşılamadı. Güncel adres: {MONSTER_PC_URL})*"
+                                    res_text += f"\n\n*(Monster Bağlantı Hatası)*"
                             else:
-                                res_text += "\n\n*(Hata: Monster URL henüz bildirilmedi!)*"
+                                res_text += "\n\n*(URL Henüz Bildirilmedi)*"
 
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
-                    bot.reply_to(message, res_text if res_text else "Komut icra ediliyor... 🛡️")
-                    return # Başarılı yanıt geldi, fonksiyondan çık.
+                    bot.reply_to(message, res_text if res_text else "İcra ediliyor...")
+                    return 
                     
             except Exception as e:
                 last_error = str(e)
-                # 🛡️ 429 (Resource Exhausted) tespiti
-                if "429" in last_error or "quota" in last_error.lower() or "exhausted" in last_error.lower():
-                    print(f"⚠️ Kota doldu, sonraki API anahtarına geçiliyor...", flush=True)
-                    break # Bu anahtar bitti, iç döngüden çıkıp bir sonraki client'a geç.
-                
-                # 404 veya 503 ise sonraki modeli dene
-                if "404" in last_error or "503" in last_error:
-                    continue
-                
-                continue # Diğer hatalarda devam et
+                if "429" in last_error or "quota" in last_error.lower(): break
+                continue
 
-    bot.reply_to(message, f"🛠️ Tüm API anahtarları veya Google sunucuları meşgul. Biraz bekleyip tekrar dene Hazım.\n`Hata: {last_error[:30]}`")
+    bot.reply_to(message, f"🛠️ Servis geçici olarak kapalı.\n`Hata: {last_error[:30]}`")
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -157,11 +147,10 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V54: Otomatik Tünel & Admin Live!", 200
+def main(): return f"Bomboclat V55: Professional Core Live!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
     time.sleep(1)
     bot.set_webhook(url=WEBHOOK_URL)
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-    
