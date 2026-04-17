@@ -19,8 +19,8 @@ WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN
 # 🛡️ ZIRHLI MODEL LİSTESİ (Sırasıyla denenecek)
 MODELS_TO_TRY = [
     'gemini-3-flash-preview', # Senin bulduğun taze güç!
-    'gemini-1.5-flash',       # 404/503 hataları için güvenli liman
-    'gemini-1.5-pro'          # Son çare zeka küpü
+    'gemini-2.5-flash',       # 404/503 hataları için güvenli liman
+    'gemini-2.5-flash-lite'          # Son çare zeka küpü
 ]
 
 clients = [genai.Client(api_key=key) for key in api_keys]
