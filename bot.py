@@ -1,20 +1,22 @@
 import telebot
 from google import genai
-from google.genai import types
 from flask import Flask, request
 import os
 import time
 from datetime import datetime, timedelta, timezone
 import itertools
+import requests  # YENİ: Monster'a veri göndermek için
+import re        # YENİ: Python kodunu metinden ayıklamak için
 
 # --- 1. AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 api_keys = [k.strip() for k in (os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
 ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
-WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
+# YENİ: Eve gidince Ngrok'tan alıp Render'a gireceğimiz adres
+MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 
-# DENECEK MODELLER (Sırasıyla: En yeni ve en stabil olanlar)
+WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-1.5-flash']
 
 clients = [genai.Client(api_key=key) for key in api_keys]
@@ -52,13 +54,15 @@ def handle_messages(message):
     if chat_id not in chat_histories:
         chat_histories[chat_id] = []
 
+    # --- 🧠 DİNAMİK KOD ÜRETİCİ TALİMATI ---
     system_context = (
-        f"Senin adın Bomboclat. Hazım Hüseyin Koçer tarafından geliştirilen rasyonel ve bağımsız bir zihinsin. "
-        f"Grup içinde cool, zeki ve samimi bir üye gibi davran. Konuştuğun kişi: {user_name}. "
-        "KRİTİK TALİMAT: Eğer kullanıcı senden bilgisayarda bir işlem yapmanı, bir programı açmanı/kapatmanı veya "
-        "donanımı kontrol etmeni istiyorsa (Örn: CS2 aç, PC'yi kapat, Monster'ı uyut vb.), cevabına mutlaka '[PC_KOMUTU]' "
-        "etiketiyle başla. Eğer sadece bilgisayarlar hakkında sohbet ediyorsa bu etiketi kullanma. "
-        f"Hazım ile daha samimi ol. (Konum: Afyon, Saat: {time_str})"
+        f"Senin adın Bomboclat. Hazım Hüseyin Koçer'in geliştirdiği bağımsız bir zihinsin. "
+        f"Grupta cool, zeki ve samimi davran. Konuştuğun kişi: {user_name}. "
+        "KRİTİK TALİMAT: Eğer kullanıcı senden bilgisayarda spesifik bir işlem yapmanı (dosya arama, silme, program açma, sistem kontrolü) "
+        "istiyorsa, bu işlemi Windows ortamında gerçekleştirecek GÜVENLİ ve ÇALIŞAN bir Python scripti yaz. "
+        "Yazdığın kodu SADECE [PYTHON] ve [/PYTHON] etiketleri arasına koy. "
+        "Örnek: [PYTHON]import os\nos.system('start steam')[/PYTHON] "
+        "Bunun dışında kullanıcıyla normal sohbet etmeye devam et. Hazım ile samimi ol."
     )
 
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
@@ -66,11 +70,8 @@ def handle_messages(message):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
-    # --- 🛡️ HATA SAVAR DÖNGÜSÜ ---
-    # Anahtar sayısı kadar tur at, her anahtarda modelleri dene
     for i in range(len(api_keys) * 2):
         current_client = next(client_iterator)
-        
         for current_model in MODELS_TO_TRY:
             try:
                 response = current_client.models.generate_content(
@@ -81,31 +82,44 @@ def handle_messages(message):
                 if response and response.text:
                     res_text = response.text
                     
-                    if "[PC_KOMUTU]" in res_text:
+                    # --- 🕵️ KOD AYIKLAMA VE MONSTER'A İLETİM ---
+                    if "[PYTHON]" in res_text:
                         if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-                            bot.reply_to(message, f"Zekice bir deneme {user_name}, ama bilgisayara erişim yetkin yok. Bu sadece Hazım'ın yapabileceği bir şey. 😉")
+                            bot.reply_to(message, f"Zekice bir deneme {user_name}, ama Monster'a sızmana izin veremem. Bu yetki sadece Hazım'da var. 😉")
                             return
                         else:
-                            res_text = res_text.replace("[PC_KOMUTU]", "").strip()
+                            # 1. Kodu metnin içinden çek
+                            match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
+                            if match:
+                                python_code = match.group(1).strip()
+                                # 2. Etiketli kısmı metinden temizle (Kullanıcı saçma kod blokları görmesin)
+                                res_text = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
+                                
+                                # 3. Monster PC'ye Gönder!
+                                if MONSTER_PC_URL:
+                                    try:
+                                        requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=5)
+                                        res_text += "\n\n*(Sinyal Monster'a iletildi ⚡)*"
+                                    except Exception as err:
+                                        res_text += f"\n\n*(Kod yazıldı ama Monster'a ulaşılamadı. Ngrok kapalı olabilir mi?)*"
+                                else:
+                                    res_text += "\n\n*(Kod zihnimde hazır ama MONSTER_URL Render'a girilmediği için iletemedim.)*"
 
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
                     bot.reply_to(message, res_text)
-                    return # Başarılı üretim, fonksiyonu sonlandır.
+                    return 
                     
             except Exception as e:
                 last_error = str(e)
                 print(f">> Hata ({current_model}): {last_error[:50]}", flush=True)
-                
-                # 503 varsa 1 saniye bekle ve sonraki model/key kombinasyonuna geç
                 if "503" in last_error:
                     time.sleep(1)
                     continue
-                # 429 varsa beklemeden sonraki key'e atla
                 if "429" in last_error:
                     break
                 continue
 
-    bot.reply_to(message, f"🛠️ Hazım, tüm anahtarlar ve modeller Google'ın yoğunluk engeline takıldı.\n\n`Son Durum: {last_error[:40]}`")
+    bot.reply_to(message, f"🛠️ Hazım, tüm anahtarlar ve modeller Google ablukasında.\n\n`Son Durum: {last_error[:40]}`")
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -115,7 +129,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V44: Kesintisiz Jarvis Aktif!", 200
+def main(): return f"Bomboclat V45: Dinamik Jarvis Aktif!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
