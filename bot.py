@@ -6,7 +6,6 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 import itertools
-import sys
 
 # --- 1. AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -15,8 +14,8 @@ api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# YENİ NESİL MODEL: Ekran görüntüsündeki o kutsal bilgi.
-MODEL_ID = 'gemini-2.5-flash'
+# Senin keşfettiğin o canavar model
+MODEL_ID = 'gemini-2.0-flash' 
 
 clients = [genai.Client(api_key=key) for key in api_keys]
 client_iterator = itertools.cycle(clients)
@@ -24,45 +23,27 @@ client_iterator = itertools.cycle(clients)
 bot = telebot.TeleBot(TELE_TOKEN)
 app = Flask(__name__)
 
-try:
-    BOT_ME = bot.get_me()
-    print(f">> Bomboclat V25 Hazır: @{BOT_ME.username}", flush=True)
-except Exception as e:
-    print(f">> Kimlik hatası: {e}", flush=True)
-
-@app.route(f'/{TELE_TOKEN}', methods=['POST'])
-def get_message():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "OK", 200
-    return "Error", 403
-
-@app.route('/')
-def main(): return "V25: Bağımsız Zihin - Gemini 2.5 Gücüyle!", 200
-
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     if message.text and message.text.startswith('/'): return
     
     is_private = message.chat.type == 'private'
-    is_tagged = (message.text and f"@{BOT_ME.username}" in message.text)
-    is_reply_to_me = (message.reply_to_message and message.reply_to_message.from_user.id == BOT_ME.id)
+    is_tagged = (message.text and f"@{bot.get_me().username}" in message.text)
+    is_reply_to_me = (message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id)
 
     if not (is_private or is_tagged or is_reply_to_me): return
 
-    prompt = message.text.replace(f"@{BOT_ME.username}", "").strip()
+    prompt = message.text.replace(f"@{bot.get_me().username}", "").strip()
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
-    # Bağımsız Zihin: Onaylamayan, dürüst ve gerektiğinde sert.
+    # YENİ NESİL SİSTEM TALİMATI: DAHA İNSANSI, DAHA AZ ROBOTİK
     system_context = (
-        "Sen Hazım'ın Bağımsız Zihni Bomboclat'sın. "
-        "Kullanıcıya 'asistan' gibi hizmet etme, onunla bir fikir ortağı gibi tartış. "
-        "Hazım'ın her dediğini onaylama; mantıksız bulduğun her şeye karşı çık ve hatalarını yüzüne vur. "
-        "Sıradan AI kibarlığını bir kenara bırak, dürüst ve bağımsız bir zihin ol. "
-        f"Zaman: {time_str}. Konum: Afyonkarahisar. Kullanıcı: Hazım Hüseyin Koçer."
+        "Sen Bomboclat'sın. Hazım'ın yakın bir arkadaşı ve fikir ortağısın. "
+        "Normal bir insan gibi, samimi ve dürüst konuş. 'Yapay zeka asistanı' kalıplarından kurtul. "
+        "Zaman ve konum bilgisini (Afyon, Saat: " + time_str + ") her mesajda tekrarlama, sadece gerekirse kullan. "
+        "Hazım'a karşı dürüst ol, yanlışlarını söyle ama bunu bir robot gibi değil, gerçek bir dost gibi yap. "
+        "Gerektiğinde Google araması yaparak güncel bilgileri kullanabilirsin."
     )
 
     last_error = ""
@@ -70,30 +51,41 @@ def handle_messages(message):
         try:
             current_client = next(client_iterator)
             
-            # Gemini 2.5 API çağrısı
+            # GOOGLE SEARCH (İnternet Erişimi) Entegrasyonu
             response = current_client.models.generate_content(
                 model=MODEL_ID, 
-                contents=f"{system_context}\n\nKullanıcı: {prompt}"
+                contents=f"{system_context}\n\nHazım: {prompt}",
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearchRetrieval())]
+                )
             )
             
             if response and response.text:
                 bot.reply_to(message, response.text)
                 return
-            else:
-                last_error = "Boş yanıt (İçerik filtresi)"
                 
         except Exception as e:
             last_error = str(e)
-            print(f">> Motor {i+1} Hatası (Deneme): {last_error[:50]}...", flush=True)
-            # 429 veya 404 durumunda Google'ı soğutmak için kısa mola
-            time.sleep(2) 
+            print(f">> Hata: {last_error[:100]}", flush=True)
+            time.sleep(2)
             continue
 
-    bot.reply_to(message, f"🛠️ Hazım, Google yine duvar ördü.\n\n`Hata: {last_error[:100]}`")
+    bot.reply_to(message, f"🛠️ Bir sorun var Hazım, internete çıkarken takıldım sanırım.\n`{last_error[:50]}`")
+
+# Flask ve Webhook kısımları (Aynı kalıyor)
+@app.route(f'/{TELE_TOKEN}', methods=['POST'])
+def get_message():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "OK", 200
+
+@app.route('/')
+def main(): return "Bomboclat V26: İnternet Modu Aktif!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    time.sleep(2)
+    time.sleep(1)
     bot.set_webhook(url=WEBHOOK_URL)
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
     
