@@ -136,4 +136,3 @@ if __name__ == "__main__":
     time.sleep(1)
     bot.set_webhook(url=WEBHOOK_URL)
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-    
