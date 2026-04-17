@@ -21,9 +21,8 @@ BOT_INFO = bot.get_me()
 chat_histories = {}
 processed_messages = set() 
 
-# Render Sağlık Kontrolü (404 hatasını bitirir)
 @app.route('/')
-def health(): return "Bomboclat is Active! 🚀", 200
+def health(): return "Bomboclat: System Stabilized! 🚀", 200
 
 @app.route('/update_url', methods=['POST'])
 def update_url():
@@ -36,14 +35,14 @@ def update_url():
     return "YETKISIZ", 403
 
 def get_ai_response(prompt, system_context, full_history):
-    # 1. GEMINI FLASH
+    # 1. GEMINI FLASH (Daha stabil)
     if gemini_iterator:
         for _ in range(len(GEMINI_KEYS)):
             key = next(gemini_iterator)
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
-                payload = {"contents": [{"parts": [{"text": f"SİSTEM: {system_context}\n\nGEÇMİŞ:\n{full_history}\n\nKULLANICI: {prompt}"}]}]}
-                r = requests.post(url, json=payload, timeout=15)
+                payload = {"contents": [{"parts": [{"text": f"SİSTEM:\n{system_context}\n\nGEÇMİŞ:\n{full_history}\n\nİSTEK: {prompt}"}]}]}
+                r = requests.post(url, json=payload, timeout=14)
                 if r.status_code == 200:
                     return r.json()['candidates'][0]['content']['parts'][0]['text'], "*(✨ Gemini)*"
             except: continue
@@ -58,9 +57,9 @@ def get_ai_response(prompt, system_context, full_history):
                     headers={"Authorization": f"Bearer {key}"},
                     json={
                         "model": "llama-3.3-70b-versatile",
-                        "messages": [{"role": "system", "content": system_context}, {"role": "user", "content": prompt}],
-                        "temperature": 0.7
-                    }, timeout=15
+                        "messages": [{"role": "system", "content": system_context}, {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nİSTEK: {prompt}"}],
+                        "temperature": 0.6
+                    }, timeout=14
                 )
                 if r.status_code == 200:
                     return r.json()['choices'][0]['message']['content'], "*(☁️ Groq)*"
@@ -78,20 +77,20 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
             try:
                 check = requests.get(f"{MONSTER_PC_URL}/status", timeout=2, headers={'ngrok-skip-browser-warning': 'true'})
                 if check.status_code == 200: is_pc_alive = True
-            except: is_pc_alive = False
+            except: pass
 
+        # --- ÜSLUP VE KİMLİK AYARI ---
         system_context = (
-            f"Adın: Bomboclat. Hazım'ın (sentinelPRİME) zeki ve dürüst ortağısın.\n"
-            f"Hazım senin yaratıcındır. Konum: Afyonkarahisar.\n"
-            f"PC DURUMU: {'AÇIK' if is_pc_alive else 'KAPALI'}.\n\n"
-            "KURALLAR:\n"
-            "1. Asla robotik olma, dürüst konuş.\n"
-            "2. Sadece SS, kamera veya uygulama isteklerinde [PYTHON]...[/PYTHON] kodu yaz.\n"
-            "3. Normal sohbette kod yazma. Zamanı sadece sorulursa söyle."
+            "KİMLİK: Senin adın Bomboclat. Sen, Hazım (sentinelPRİME) tarafından yaratılmış bağımsız, akılcı ve dürüst bir zihinsin.\n"
+            "ROL: Sen bir uşak değilsin, Hazım'ın dijital dünyadaki ortağısın.\n"
+            f"MUHATAP: Karşındaki kişi Hazım. Ona ismiyle hitap et. Asla robotik 'Nasıl yardımcı olabilirim?' gibi klişeler kullanma.\n"
+            f"PC DURUMU: {'AÇIK' if is_pc_alive else 'KAPALI'}. Konum: Afyonkarahisar.\n"
+            "DİL: Sadece Türkçe konuş, araya yabancı kelime karıştırma.\n"
+            "TEKNİK: SS, kamera veya uygulama isteklerinde SADECE [PYTHON]...[/PYTHON] kodu üret, başka hiçbir metin yazma."
         )
 
         if chat_id not in chat_histories: chat_histories[chat_id] = []
-        full_history = "\n".join(chat_histories[chat_id][-6:]) # Son 6 mesaj
+        full_history = "\n".join(chat_histories[chat_id][-4:]) 
         
         res_text, source = get_ai_response(prompt, system_context, full_history)
 
@@ -103,22 +102,22 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                 if match:
                     try:
                         requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40, headers={'ngrok-skip-browser-warning': 'true'})
-                        bot.send_message(chat_id, f"{clean_res or 'İşlem tamamlandı.'} ⚡\n\n{source}")
+                        bot.send_message(chat_id, f"{clean_res or 'Halledeyim hemen.'} ⚡\n\n{source}")
                     except:
-                        bot.send_message(chat_id, f"{clean_res}\n*(⚠️ PC bağlantısı koptu)*")
+                        bot.send_message(chat_id, f"{clean_res}\n*(⚠️ Monster düştü)*")
                     return
 
             bot.send_message(chat_id, f"{clean_res or res_text}\n\n{source}")
             
-            # GEÇMİŞİ GÜNCELLE (Kritik nokta burasıydı)
-            chat_histories[chat_id].append(f"{user_name}: {prompt}")
+            # Hafıza yönetimi: Sadece son mesajları tut, kafa karışmasın
+            chat_histories[chat_id].append(f"Hazım: {prompt}")
             chat_histories[chat_id].append(f"Bomboclat: {clean_res or 'İşlem yapıldı.'}")
-            chat_histories[chat_id] = chat_histories[chat_id][-10:]
+            chat_histories[chat_id] = chat_histories[chat_id][-8:]
         else:
-            bot.send_message(chat_id, "❌ Servislerden yanıt alınamadı, kotaları kontrol et Hazım.")
+            bot.send_message(chat_id, "❌ Servislerde tıkanıklık var (Kota/Timeout).")
 
     except Exception as e:
-        bot.send_message(chat_id, f"🛠️ **İç Hata:** `{str(e)[:100]}`")
+        bot.send_message(chat_id, f"🛠️ **Hata:** `{str(e)[:100]}`")
     finally:
         if len(processed_messages) > 100: processed_messages.clear()
 
@@ -128,11 +127,11 @@ def handle_messages(message):
     if not message.text: return
     
     msg_lower = message.text.lower()
-    if msg_lower in ["id", "/id", "benim id ne"]:
-        bot.reply_to(message, f"Senin ID'n: `{user_id}`")
+    if msg_lower in ["id", "benim id ne", "/id"]:
+        bot.reply_to(message, f"Senin ID: `{user_id}`")
         return
     if msg_lower == "/link":
-        bot.reply_to(message, f"Monster URL: `{MONSTER_PC_URL}`")
+        bot.reply_to(message, f"Monster: `{MONSTER_PC_URL}`")
         return
 
     is_private = message.chat.type == 'private'
