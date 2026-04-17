@@ -70,7 +70,6 @@ def get_ai_response(prompt, system_context, full_history):
 def process_ai_request(message, prompt, user_name, chat_id, user_id):
     global MONSTER_PC_URL
     
-    # Çift işlem koruması (Aynı mesaj ID'sini iki kez işleme)
     if message.message_id in processed_messages: return
     processed_messages.add(message.message_id)
     
@@ -83,27 +82,24 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
 
     now = datetime.now(timezone.utc) + timedelta(hours=3)
     
-    # --- PROMPT VE ALTIN ÖRNEKLER ---
+    # --- YENİLENMİŞ SERT TALİMATLAR VE ÖRNEKLER ---
     system_context = (
-        f"KİMLİK: Sen Bomboclat'sın. sentinelPRİME (Hazım) asistanısın. Konum: Afyonkarahisar.\n"
+        f"KİMLİK: Sen Bomboclat'sın. Hazım'ın (sentinelPRİME) asistanısın. Konum: Afyonkarahisar.\n"
         f"PC DURUMU: {'AÇIK' if is_pc_alive else 'KAPALI'}. Zaman: {now.strftime('%H:%M:%S')}.\n\n"
-        "TALİMATLAR:\n"
-        "1. İnsan gibi konuş, 'İSTEK ALINDI' gibi robotik ifadeler kullanma.\n"
-        "2. Sadece SS, kamera veya dosya istenirse [PYTHON] kodu yaz. Normal sohbette kod yazma.\n"
-        "3. KOD YAZARKEN MUTLAKA DOSYAYI TELEGRAMA GÖNDER. Örnek:\n"
-        "[PYTHON]\n"
-        "import pyautogui, requests, os\n"
-        "pyautogui.screenshot('ss.png')\n"
-        f"requests.post('https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto', data={{'chat_id': '{chat_id}'}}, files={{'photo': open('ss.png', 'rb')}})\n"
-        "os.remove('ss.png')\n"
-        "[/PYTHON]"
+        "KESİN TALİMATLAR:\n"
+        "1. İnsan gibi konuş, robotik olma.\n"
+        "2. Kullanıcı site açmanı (YouTube vb.) veya uygulama çalıştırmanı isterse ASLA bilgi verme, direkt KOD yaz.\n"
+        "3. Site açmak için 'webbrowser' kütüphanesini kullan.\n"
+        "4. KOD ÖRNEKLERİ:\n"
+        "- Youtube aç: [PYTHON]\nimport webbrowser\nwebbrowser.open('https://www.youtube.com')\n[/PYTHON]\n"
+        "- SS al: [PYTHON]\nimport pyautogui, requests, os\npyautogui.screenshot('ss.png')\n"
+        f"requests.post('https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto', data={{'chat_id': '{chat_id}'}}, files={{'photo': open('ss.png', 'rb')}})\nos.remove('ss.png')\n[/PYTHON]"
     )
 
     full_history = "\n".join(chat_histories.get(chat_id, [])[-8:])
     res_text, source = get_ai_response(prompt, system_context, full_history)
 
     if res_text:
-        # Kod çalıştırma (Sadece yetkili kullanıcı ve açık PC)
         if "[PYTHON]" in res_text and is_pc_alive and user_id in ALLOWED_USERS:
             match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
             if match:
@@ -116,7 +112,6 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
 
         bot.send_message(chat_id, f"{res_text}\n\n{source}")
         
-    # Kilit temizliği (Hafıza dolmasın)
     if len(processed_messages) > 100: processed_messages.clear()
 
 @bot.message_handler(func=lambda message: True)
