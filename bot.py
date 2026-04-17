@@ -9,12 +9,8 @@ import itertools
 
 # --- 1. AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-keys_env = os.environ.get('GEMINI_KEYS') or os.environ.get('GEMINI_KEY') or ''
-api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
-
-# --- 🔒 GÜVENLİK DUVARI ---
-allowed_ids_env = os.environ.get('ALLOWED_USERS') or ''
-ALLOWED_USERS = [int(i.strip()) for i in allowed_ids_env.split(',') if i.strip()]
+api_keys = [k.strip() for k in (os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
+ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 MODEL_ID = 'gemini-2.5-flash' 
@@ -31,20 +27,13 @@ chat_histories = {}
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     user_id = message.from_user.id
-    user_name = message.from_user.first_name or "Yabancı"
+    user_name = message.from_user.first_name or "Arkadaşım"
     
-    # --- 🆔 ID ÖĞRENME (Her zaman çalışır) ---
-    if message.text and message.text.lower() in ["/id", "id", "numaram kaç"]:
+    # --- 🆔 ID ÖĞRENME KOMUTU ---
+    if message.text and message.text.lower() in ["/id", "id"]:
         bot.reply_to(message, f"Senin Telegram ID numaran: `{user_id}`")
         return
 
-    # 🕵️ GÜVENLİK KONTROLÜ
-    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-        if message.chat.type == 'private':
-            bot.reply_to(message, f"Üzgünüm {user_name}, Hazım'dan izin almadan benimle konuşamazsın. ID numaran: `{user_id}`")
-        return
-
-    # --- Standart Mesaj İşleme ---
     if message.text and message.text.startswith('/'): return
     
     is_private = message.chat.type == 'private'
@@ -62,12 +51,17 @@ def handle_messages(message):
     if chat_id not in chat_histories:
         chat_histories[chat_id] = []
 
+    # --- 🧠 SEMANTİK YETKİ TALİMATI ---
     system_context = (
-        f"Senin adın Bomboclat. Hazım Hüseyin Koçer tarafından geliştirilen bağımsız bir zihinsin. "
-        f"Grup üyesi gibi cool ve rasyonel davran. Konuştuğun kişi: {user_name}. "
-        f"Hazım ile samimi ol, başkalarıyla mesafeli ol. (Saat: {time_str})"
+        f"Senin adın Bomboclat. Hazım Hüseyin Koçer tarafından geliştirilen rasyonel ve bağımsız bir zihinsin. "
+        f"Grup içinde cool, zeki ve samimi bir üye gibi davran. Konuştuğun kişi: {user_name}. "
+        "KRİTİK TALİMAT: Eğer kullanıcı senden bilgisayarda bir işlem yapmanı, bir programı açmanı/kapatmanı veya "
+        "donanımı kontrol etmeni istiyorsa (Örn: CS2 aç, PC'yi kapat, Monster'ı uyut vb.), cevabına mutlaka '[PC_KOMUTU]' "
+        "etiketiyle başla. Eğer sadece bilgisayarlar hakkında sohbet ediyorsa bu etiketi kullanma. "
+        f"Hazım ile daha samimi ol. (Konum: Afyon, Saat: {time_str})"
     )
 
+    # Hafıza güncelleme
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
     chat_histories[chat_id] = chat_histories[chat_id][-8:]
     full_history = "\n".join(chat_histories[chat_id])
@@ -82,8 +76,20 @@ def handle_messages(message):
             )
             
             if response and response.text:
-                chat_histories[chat_id].append(f"Bomboclat: {response.text}")
-                bot.reply_to(message, response.text)
+                res_text = response.text
+                
+                # --- 🕵️ NİYET OKUMA VE GÜVENLİK FİLTRESİ ---
+                if "[PC_KOMUTU]" in res_text:
+                    # Eğer niyet PC kontrolü ise ama yazan Hazım değilse (ALLOWED_USERS kontrolü):
+                    if ALLOWED_USERS and user_id not in ALLOWED_USERS:
+                        bot.reply_to(message, f"Zekice bir deneme {user_name}, ama bilgisayara erişim yetkin yok. Bu sadece Hazım'ın yapabileceği bir şey. 😉")
+                        return
+                    else:
+                        # Hazım ise etiketi silip normal cevabı gönderiyoruz (Eve gidince buraya PC sinyali eklenecek)
+                        res_text = res_text.replace("[PC_KOMUTU]", "").strip()
+
+                chat_histories[chat_id].append(f"Bomboclat: {res_text}")
+                bot.reply_to(message, res_text)
                 return
                 
         except Exception as e:
@@ -92,9 +98,8 @@ def handle_messages(message):
             time.sleep(0.3)
             continue
 
-    bot.reply_to(message, f"🛠️ Hazım, sistemler meşgul. Hata: {last_error[:40]}")
+    bot.reply_to(message, f"🛠️ Hazım, sistemler yoğun. Hata: {last_error[:30]}")
 
-# Flask ve Webhook (Aynı kalıyor)
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -103,7 +108,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V41: ID Sistemi Aktif!", 200
+def main(): return f"Bomboclat V43: Semantik Jarvis Aktif!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
