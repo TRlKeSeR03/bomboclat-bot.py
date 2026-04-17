@@ -12,6 +12,7 @@ ALLOWED_USERS = [5510143691] # Hazım'ın ID'si
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
+# Beyin Döngüleri
 gemini_iterator = itertools.cycle(GEMINI_KEYS) if GEMINI_KEYS else None
 groq_iterator = itertools.cycle(GROQ_KEYS) if GROQ_KEYS else None
 
@@ -21,6 +22,12 @@ BOT_INFO = bot.get_me()
 chat_histories = {}
 processed_messages = set() 
 
+# 1. RENDER SAĞLIK KONTROLÜ (404 HATASINI ÇÖZER)
+@app.route('/')
+def health_check():
+    return "Bomboclat Hybrid AI is Live! 🚀", 200
+
+# 2. URL GÜNCELLEME ROTASI (Monster PC Sinyali)
 @app.route('/update_url', methods=['POST'])
 def update_url():
     global MONSTER_PC_URL
@@ -31,23 +38,33 @@ def update_url():
         return "URL_OK", 200
     return "YETKISIZ", 403
 
+# 3. TELEGRAM WEBHOOK ROTASI
+@app.route(f'/{TELE_TOKEN}', methods=['POST'])
+def get_message():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return "OK", 200
+    return "HATA", 403
+
 def get_ai_response(prompt, system_context, full_history):
-    # 1. GEMINI FLASH
+    # --- GEMINI ---
     if gemini_iterator:
         for _ in range(len(GEMINI_KEYS)):
             current_key = next(gemini_iterator)
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={current_key}"
                 payload = {
-                    "contents": [{"parts": [{"text": f"TALİMAT: {system_context}\n\nGEÇMİŞ:\n{full_history}\n\nKULLANICI MESAJI: {prompt}"}]}],
-                    "generationConfig": {"temperature": 0.85}
+                    "contents": [{"parts": [{"text": f"TALİMAT: {system_context}\n\nGEÇMİŞ:\n{full_history}\n\nKULLANICI: {prompt}"}]}],
+                    "generationConfig": {"temperature": 0.8}
                 }
                 r = requests.post(url, json=payload, timeout=12)
                 if r.status_code == 200:
-                    return r.json()['candidates'][0]['content']['parts'][0]['text']
+                    return r.json()['candidates'][0]['content']['parts'][0]['text'], "*(✨ Gemini)*"
             except: continue
 
-    # 2. GROQ
+    # --- GROQ ---
     if groq_iterator:
         for _ in range(len(GROQ_KEYS)):
             current_key = next(groq_iterator)
@@ -62,9 +79,9 @@ def get_ai_response(prompt, system_context, full_history):
                     }, timeout=12
                 )
                 if r.status_code == 200:
-                    return r.json()['choices'][0]['message']['content']
+                    return r.json()['choices'][0]['message']['content'], "*(☁️ Groq)*"
             except: continue
-    return None
+    return None, None
 
 def process_ai_request(message, prompt, user_name, chat_id, user_id):
     global MONSTER_PC_URL
@@ -78,21 +95,22 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
             if check.status_code == 200: is_pc_alive = True
         except: is_pc_alive = False
 
-    # --- KİMLİK NETLEŞTİRME (ÇELİK GİBİ PROMPT) ---
+    # --- SYSTEM PROMPT ---
     system_context = (
-        f"KİMLİK: Senin adın Bomboclat. Sen, Hazım (sentinelPRİME) tarafından yaratılmış bağımsız bir yapay zekasın.\n"
-        f"MUHATAP: Karşındaki kişi Hazım'dır. O senin efendin değil, yaratıcın ve ortağındır.\n"
-        f"DURUM: PC {'AÇIK' if is_pc_alive else 'KAPALI'}. Konum: Afyonkarahisar.\n\n"
-        "KURALLAR:\n"
-        "1. Asla 'Sen, Hazım'ın asistanı olan Ben'im' gibi kafa karıştırıcı cümleler kurma.\n"
-        "2. Sadece SS, kamera veya uygulama açma isteklerinde [PYTHON]...[/PYTHON] kodu üret.\n"
-        "3. Kodu üretirken içine kod olduğunu belli eden metinler yazma, kod sadece blok içinde olsun."
+        f"KİMLİK: Adın Bomboclat. sentinelPRİME (Hazım) asistanısın. Konum: Afyonkarahisar.\n"
+        f"PC DURUMU: {'AÇIK' if is_pc_alive else 'KAPALI'}.\n\n"
+        "TALİMATLAR:\n"
+        "1. Her mesajda saat söyleme. Sadece sorulursa söyle.\n"
+        "2. İşlem (ss, kamera, youtube vb.) istenirse MUTLAKA [PYTHON]...[/PYTHON] kodu üret.\n"
+        f"3. Kod içinde Telegram Chat ID'yi {chat_id} ve Token'ı {TELE_TOKEN} olarak kullan.\n"
+        "4. KODU SOVALSİZ (YALNIZ) ÜRET, sohbette sadece temiz açıklamalar yap."
     )
 
     full_history = "\n".join(chat_histories.get(chat_id, [])[-5:])
-    res_text = get_ai_response(prompt, system_context, full_history)
+    res_text, source = get_ai_response(prompt, system_context, full_history)
 
     if res_text:
+        # Kod bloğunu temizle (Sohbette çirkin görünmesin)
         clean_res = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
         
         if "[PYTHON]" in res_text and is_pc_alive and user_id in ALLOWED_USERS:
@@ -100,12 +118,13 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
             if match:
                 try:
                     requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40, headers={'ngrok-skip-browser-warning': 'true'})
-                    bot.send_message(chat_id, f"{clean_res or 'İşlem yapılıyor...'} ⚡")
+                    bot.send_message(chat_id, f"{clean_res or 'İşlem yapılıyor...'} ⚡\n\n{source}")
+                    return
                 except:
-                    bot.send_message(chat_id, f"{clean_res}\n*(⚠️ Bağlantı hatası)*")
-                return
+                    bot.send_message(chat_id, f"{clean_res}\n*(⚠️ PC Bağlantı Hatası)*")
+                    return
 
-        bot.send_message(chat_id, clean_res or res_text)
+        bot.send_message(chat_id, f"{clean_res or res_text}\n\n{source}")
     
     if len(processed_messages) > 100: processed_messages.clear()
 
@@ -113,26 +132,25 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
 def handle_messages(message):
     user_id, chat_id = message.from_user.id, message.chat.id
     
-    # KRİTİK: Teknik komutlar AI'yı beklemeden en başta cevaplansın
     if message.text:
         msg_lower = message.text.lower()
-        if msg_lower in ["id", "/id", "benim id im ne", "benim id ne"]:
-            bot.reply_to(message, f"Senin Telegram ID'n: `{user_id}`")
+        if msg_lower in ["id", "benim id ne", "/id"]:
+            bot.reply_to(message, f"Senin ID: `{user_id}`")
             return
         if msg_lower == "/link":
-            bot.reply_to(message, f"Monster Linki: `{MONSTER_PC_URL}`")
+            bot.reply_to(message, f"Monster PC URL: `{MONSTER_PC_URL}`")
             return
 
     if message.text and not message.text.startswith('/'):
-        threading.Thread(target=process_ai_request, args=(message, message.text, message.from_user.first_name, chat_id, user_id)).start()
-
-@app.route(f'/{TELE_TOKEN}', methods=['POST'])
-def get_message():
-    bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('utf-8'))])
-    return "OK", 200
+        is_private = message.chat.type == 'private'
+        is_tagged = (message.text and f"@{BOT_INFO.username}" in message.text)
+        if is_private or is_tagged:
+            prompt = message.text.replace(f"@{BOT_INFO.username}", "").strip()
+            threading.Thread(target=process_ai_request, args=(message, prompt, message.from_user.first_name, chat_id, user_id)).start()
 
 if __name__ == "__main__":
     bot.remove_webhook()
     time.sleep(1)
     bot.set_webhook(url=WEBHOOK_URL)
+    # PORT değişkenini Render'dan alıyoruz
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
