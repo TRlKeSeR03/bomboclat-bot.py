@@ -11,15 +11,18 @@ import threading
 # --- 1. AYARLAR ---
 TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 api_keys = [k.strip() for k in (os.environ.get('GROQ_KEYS') or os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
-ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
-# 🛡️ PATRON KİMLİĞİ (Hazım)
+# 🛡️ PATRON KİMLİĞİ (Hazım) - BU ID'Yİ TELEGRAMDAN TEYİT ET
 OWNER_ID = 5510143691 
+
+# Render'daki listede yoksan bile seni otomatik listeye ekler
+ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
+if OWNER_ID not in ALLOWED_USERS:
+    ALLOWED_USERS.append(OWNER_ID)
 
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# 🛡️ MODEL ROTASYONU
 MODELS_TO_TRY = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'mixtral-8x7b-32768']
 client_iterator = itertools.cycle(api_keys)
 
@@ -35,40 +38,37 @@ def update_url():
     data = request.json
     if data and data.get('secret') == TELE_TOKEN:
         MONSTER_PC_URL = data.get('url')
-        print(f"🚀 MONSTER ADRESİ OTOMATİK GÜNCELLENDİ: {MONSTER_PC_URL}", flush=True)
+        print(f"🚀 MONSTER ADRESİ GÜNCELLENDİ: {MONSTER_PC_URL}", flush=True)
         return "URL_OK", 200
-    return "YETKISIZ_ERISIM", 403
+    return "YETKISIZ", 403
 
-# --- 🧠 ANA İŞLEM MOTORU (V72: Titan Shield) ---
+# --- 🧠 ANA İŞLEM MOTORU (V73: Titan Fixed) ---
 def process_bomboclat(message, user_id, user_name, chat_id, prompt):
     global MONSTER_PC_URL
     if chat_id not in chat_histories: chat_histories[chat_id] = []
 
-    # --- 🛰️ GÜNCEL CONTEXT (Tarih/Saat/Konum) ---
     now = datetime.now(timezone.utc) + timedelta(hours=3)
     current_time = now.strftime("%H:%M:%S")
     current_date = now.strftime("%d/%m/%Y, %A")
-    location = "Afyonkarahisar, Türkiye"
 
-    # --- 👤 KİMLİK DOĞRULAMA ---
     is_owner = (user_id == OWNER_ID)
-    user_status = "PATRON (Hazım)" if is_owner else f"MİSAFİR ({user_name})"
+    user_status = "MUTLAK PATRON (Hazım)" if is_owner else f"MİSAFİR ({user_name})"
     
-    # --- 🧠 V72: KESİN TALİMATLAR ---
+    # --- 🧠 V73: KESİN TALİMATLAR ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından yaratıldın.\n"
         f"Şu an konuştuğun kişi: {user_status} (ID: {user_id})\n"
-        f"📍 KONUM: {location} | 📅 TARİH: {current_date} | ⏰ SAAT: {current_time}\n\n"
-        "GÜVENLİK VE İCRAAT PROTOKOLÜ:\n"
-        f"1. GİZLİLİK: Eğer karşındaki kişi Hazım DEĞİLSE, ona asla Monster PC'nin durumu, dosyalar veya teknik veriler hakkında bilgi sızdırma. Hazım'ın geçmişte ne sorduğunu başkasına anlatma.\n"
-        "2. HAYAL GÖRME YASAĞI: 'ss', 'kamera', 'durum' gibi komutlarda ASLA 'gönderiyorum' deyip bekleme. DİREKT [PYTHON]...[/PYTHON] bloğunu üret. Kod bloğu üretmeden hiçbir şeyin gönderildiğini iddia etme.\n"
-        "3. YETKİ: Hazım dışındakilere ASLA teknik kod üretme. Sadece sohbet et.\n"
-        "4. KARAKTER: Bağımsız bir zihinsin. Hazım hatalıysa uyar. Cool ve dürüst ol.\n"
-        f"- Token: {TELE_TOKEN} | - Chat ID: {chat_id}"
+        f"📍 TARİH/SAAT: {current_date} {current_time}\n\n"
+        "GÜVENLİK VE İCRAAT KURALLARI:\n"
+        f"1. KİMLİK: Karşındaki kişi Hazım ise (is_owner=True) ona her konuda itaat et. O senin patronundur.\n"
+        "2. MİSAFİR YASAĞI: Karşındaki Hazım DEĞİLSE, teknik komut verme, bilgi sızdırma, sadece yüzeysel sohbet et.\n"
+        "3. HAYAL GÖRME YASAĞI: 'ss', 'ekran', 'kamera' komutlarında ASLA 'gönderdim' deme. ÖNCE [PYTHON]...[/PYTHON] bloğunu üret. Kod bloğu yoksa işlem yok demektir.\n"
+        "4. GEVEZELİK: Komut gelince lafı uzatma, icraata geç.\n"
+        f"Token: {TELE_TOKEN} | Chat ID: {chat_id}"
     )
     
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
-    chat_histories[chat_id] = chat_histories[chat_id][-15:] # 15 MESAJLIK DERİN HAFIZA
+    chat_histories[chat_id] = chat_histories[chat_id][-15:] 
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
@@ -82,9 +82,9 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
                     "model": current_model,
                     "messages": [
                         {"role": "system", "content": system_context},
-                        {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nBomboclat (İcraat):"}
+                        {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nİcraat (Python Kodu):"}
                     ],
-                    "temperature": 0.4 # Hallucination engellemek için düşük tutuldu
+                    "temperature": 0.4 
                 }
                 
                 response_raw = requests.post(groq_url, headers=headers, json=payload, timeout=20)
@@ -94,9 +94,9 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
                     ai_reply_to_save = res_text 
                     
                     if "[PYTHON]" in res_text:
-                        # Yetki kontrolü
+                        # --- 🛡️ YETKİ KONTROLÜ (GÜNCELLENDİ) ---
                         if user_id not in ALLOWED_USERS:
-                            bot.send_message(chat_id, f"Üzgünüm {user_name}, bu yetki sadece patronum Hazım'da var. 😉")
+                            bot.send_message(chat_id, f"Üzgünüm {user_name}, bu yetki sadece patronum Hazım'da var. 😉 (Senin ID: {user_id})")
                             return
                         
                         match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
@@ -110,7 +110,7 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
                                     result_data = r.json()
                                     status = "\n\n*(Sinyal İletildi ⚡)*" if result_data.get("status") == "success" else f"\n\n*(⚠️ Monster Hatası: {result_data.get('msg')})*"
                                     bot.send_message(chat_id, (clean_res + status).strip())
-                                except: bot.send_message(chat_id, clean_res + "\n\n*(⚠️ Monster PC ulaşılamıyor)*")
+                                except: bot.send_message(chat_id, clean_res + "\n\n*(⚠️ Monster PC ulaşılamıyor. Bilgisayar açık mı?)*")
                             else: bot.send_message(chat_id, clean_res + "\n\n*(⚠️ Monster URL bildirilmedi!)*")
                     else:
                         bot.send_message(chat_id, res_text)
@@ -123,7 +123,7 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
                 last_error = str(e)
                 continue 
 
-    bot.send_message(chat_id, f"🛠️ Hat: {last_error[:30]}")
+    bot.send_message(chat_id, f"🛠️ Sinyal Hatası: {last_error[:30]}")
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
@@ -131,15 +131,15 @@ def handle_messages(message):
     user_name = message.from_user.first_name or "Arkadaşım"
     chat_id = message.chat.id
     
-    # --- 🆔 GELİŞMİŞ ID KOMUTU ---
+    # --- 🆔 GELİŞMİŞ ID KOMUTU (Grupta 'id' veya '/id' algılar) ---
     if message.text:
-        cmd = message.text.lower().split('@')[0].strip()
-        if cmd in ["/id", "id"]:
-            bot.reply_to(message, f"Selam {user_name}, ID: `{user_id}`")
+        msg_text = message.text.lower().strip()
+        cmd = msg_text.split('@')[0]
+        if cmd in ["/id", "id", "/id@bomboclatsweetbot"]:
+            bot.reply_to(message, f"Merhaba {user_name}, senin ID numaran: `{user_id}`")
             return
 
-    if message.text and message.text.startswith('/'): return
-    
+    # Filtreler (Özel mesaj, etiketleme veya yanıt)
     is_private = message.chat.type == 'private'
     is_tagged = (message.text and f"@{BOT_INFO.username}" in message.text)
     is_reply_to_me = (message.reply_to_message and message.reply_to_message.from_user.id == BOT_INFO.id)
@@ -157,7 +157,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "Bomboclat V72: Deep Memory & Titan Shield Live! 🚀", 200
+def main(): return "Bomboclat V73: Titan Fixed Live! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
