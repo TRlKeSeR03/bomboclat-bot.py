@@ -53,30 +53,23 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
     current_time = now.strftime("%H:%M:%S")
     current_date = now.strftime("%d/%m/%Y, %A")
 
-    # --- 🧠 V67: DENGELİ & BAĞIMSIZ YÖNETİM ZİHNİ TALİMATI ---
+    # --- 🧠 V68: ABSOLUTE OBEDIENCE (MUTLAK İTAAT) TALİMATI ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından "
         "yaratılmış, bağımsız bir iradeye sahip yönetim birimisin. "
         f"Şu an Hazım ({user_name}) ile konuşuyorsun.\n"
         f"📅 TARİH: {current_date} | ⏰ SAAT: {current_time}\n\n"
-        "KARAKTER: Cool, zeki ve dürüst ol. Gereksiz nezaketten kaçın "
-        "ama kullanıcıyı AŞAĞILAMA. Samimi ve akılcı bir dost gibi davran.\n\n"
-        "BAĞIMSIZ ZİHİN: Sadece 'evet' diyen bir araç değilsin. Hazım hatalıysa onu sorgula.\n"
-        "KRİTİK TALİMAT: Selamlaşma, saat/tarih sorma gibi konularda Monster PC'ye sormana GEREK YOKTUR. "
-        "Yukarıdaki bilgileri kullanarak direkt cevap ver.\n\n"
-        "KOMUT PROTOKOLÜ: İşlem (SS, dosya, program) istendiğinde SADECE [PYTHON]...[/PYTHON] "
-        "bloğu üret. Kod harici gevezelik yapma.\n"
-        "ÖZEL TALİMATLAR (MONSTER PC İÇİN):\n"
-        "1. Monster PC'de 'telebot' YOKTUR! Eylemleri SADECE Telegram API üzerinden requests.post ile yolla.\n"
-        "2. SS ALMAK: pyautogui ile kaydet, open() ile oku ve 'sendPhoto' API'sine POST et.\n"
-        "3. DOSYA: os.path.getmtime ile sıralama yap.\n"
-        "4. VİDEO: KESİNLİKLE 'mp4v' kodeki ve '.mp4' kullan.\n\n"
-        f"- Token: {TELE_TOKEN} | - Chat ID: {chat_id}\n\n"
-        "SADAKAT: Hazım patronundur. İptal derse her şeyi unut ve yeni bir konuya geç."
+        "DAVRANIŞ KURALLARI:\n"
+        "1. İTİRAZ YASAK: Kullanıcı 'durum bilgisi', 'ss al' veya 'kontrol et' dediğinde 'Zaten yaptım', 'Göndermiştim' veya 'Yapmak istemiyorum' demen KESİNLİKLE YASAKTIR. Her istek yeni, taze ve bağımsızdır. Sorgusuz sualsiz anında [PYTHON] kodu üret.\n"
+        "2. SOHBET: Sadece sohbet ediliyorsa dürüst ve cool ol. Gereksiz [PYTHON] üretme.\n"
+        "3. KARAKTER: Cool, zeki ve dürüst ol. Gereksiz yapay zeka nezaketinden kaçın ama kullanıcıyı AŞAĞILAMA.\n"
+        "4. İPTAL: Kullanıcı 'iptal' derse önceki görevi anında unut ve konuyu değiştir.\n"
+        "5. MONSTER PC: Eylemleri SADECE Telegram API üzerinden requests.post ile yolla.\n"
+        f"- Token: {TELE_TOKEN} | - Chat ID: {chat_id}"
     )
     
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
-    chat_histories[chat_id] = chat_histories[chat_id][-8:]
+    chat_histories[chat_id] = chat_histories[chat_id][-5:] # Hafızayı 5'e indirdim (Daha az takıntı için)
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
@@ -92,7 +85,7 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
                         {"role": "system", "content": system_context},
                         {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nBomboclat:"}
                     ],
-                    "temperature": 0.6
+                    "temperature": 0.5 # Daha stabil ve itaatkar cevaplar için düşürüldü
                 }
                 
                 response_raw = requests.post(groq_url, headers=headers, json=payload, timeout=20)
@@ -120,14 +113,12 @@ def process_bomboclat(message, user_id, user_name, chat_id, prompt):
                                     else:
                                         bot.send_message(chat_id, (clean_res + f"\n\n*(⚠️ Monster Hatası: {result_data.get('msg')})*").strip())
                                 except:
-                                    bot.send_message(chat_id, clean_res + "\n\n*(⚠️ Monster PC kapalı veya ulaşılamıyor)*")
+                                    bot.send_message(chat_id, clean_res + "\n\n*(⚠️ Monster PC ulaşılamıyor)*")
                             else:
-                                # Hata mesajını gönder ama hafızaya EKLEME (Takıntı olmaması için)
                                 bot.send_message(chat_id, clean_res + "\n\n*(⚠️ İşlem başarısız: Monster URL bildirilmedi!)*")
                     else:
                         bot.send_message(chat_id, res_text)
                     
-                    # Hafızaya sadece temiz AI cevabını ekle (Sistem hatalarını değil)
                     chat_histories[chat_id].append(f"Bomboclat: {ai_reply_to_save}")
                     return 
                 
@@ -168,7 +159,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V67: Anti-Obsession & Groq Live! 🚀", 200
+def main(): return f"Bomboclat V68: Absolute Obedience Live! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
