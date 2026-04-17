@@ -1,27 +1,19 @@
 import telebot
-from flask import Flask, request, jsonify
-import os
-import time
+from flask import Flask, request
+import os, time, requests, re, threading, itertools
 from datetime import datetime, timedelta, timezone
-import itertools
-import requests
-import re
-import threading 
 
-# --- 1. AYARLAR ---
+# --- AYARLAR ---
 TELE_TOKEN = os.environ.get('TELE_TOKEN') or os.environ.get('TELEGRAM_TOKEN')
 api_keys = [k.strip() for k in (os.environ.get('GROQ_KEYS') or os.environ.get('GEMINI_KEYS') or '').split(',') if k.strip()]
 ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '').split(',') if i.strip()]
 
-# 🛡️ MUTLAK YETKİLİ (Yaratıcı: Hazım)
 OWNER_ID = 5510143691 
 if OWNER_ID not in ALLOWED_USERS: 
     ALLOWED_USERS.append(OWNER_ID)
 
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
-
-# 🎯 BULUT YEDEK MODELLERİ (Monster kapalıyken devreye girer)
 MODELS_TO_TRY = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile']
 client_iterator = itertools.cycle(api_keys)
 
@@ -30,7 +22,6 @@ app = Flask(__name__)
 BOT_INFO = bot.get_me()
 chat_histories = {}
 
-# --- 🛰️ OTOMATİK URL GÜNCELLEME ---
 @app.route('/update_url', methods=['POST'])
 def update_url():
     global MONSTER_PC_URL
@@ -41,15 +32,12 @@ def update_url():
         return "URL_OK", 200
     return "YETKISIZ", 403
 
-# --- 🧠 ASIL ZEKA VE İŞLEM FONKSİYONU ---
 def process_ai_request(message, prompt, user_name, chat_id, user_id):
     global MONSTER_PC_URL
     if chat_id not in chat_histories: chat_histories[chat_id] = []
     
-    is_owner = (user_id == OWNER_ID)
     now = datetime.now(timezone.utc) + timedelta(hours=3)
     
-    # --- 🧠 DOSTÇA VE AKILCI ÜSLUP TALİMATI ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından yaratılmış bağımsız bir zihinsin.\n"
         f"Konuştuğun kişi: {user_name} | Zaman: {now.strftime('%H:%M:%S')}\n\n"
@@ -65,33 +53,24 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
     chat_histories[chat_id] = chat_histories[chat_id][-12:] 
     full_history = "\n".join(chat_histories[chat_id])
 
-    res_text = ""
-    brain_source = ""
+    res_text, brain_source = "", ""
 
-    # 📡 1. ADIM: MONSTER PC KONTROLÜ (Yerel RTX 5050 Beyni)
+    # 1. ADIM: MONSTER PC KONTROLÜ (Yerel Ollama 3)
     if MONSTER_PC_URL:
         try:
-            # Monster online mı?
-            check = requests.get(f"{MONSTER_PC_URL}/status", timeout=2)
-            if check.status_code == 200:
-                # Monster'daki Ollama (Llama 3 8B) motoruna sor
-                monster_resp = requests.post(
+            if requests.get(f"{MONSTER_PC_URL}/status", timeout=2).status_code == 200:
+                m_resp = requests.post(
                     f"{MONSTER_PC_URL}/generate", 
-                    json={
-                        "prompt": prompt, 
-                        "system": system_context, 
-                        "history": full_history
-                    },
+                    json={"prompt": prompt, "system": system_context, "history": full_history},
                     timeout=45
                 )
-                if monster_resp.status_code == 200:
-                    res_text = monster_resp.json().get("response", "")
+                if m_resp.status_code == 200:
+                    res_text = m_resp.json().get("response", "")
                     brain_source = "*(⚡ Monster RTX 5050)*"
-        except:
-            res_text = "" # Hata olursa Bulut'a düş
+        except: pass
 
-    # ☁️ 2. ADIM: BULUT YEDEKLEME (PC kapalıysa devreye girer)
-    if not res_text:
+    # 2. ADIM: BULUT YEDEKLEME (Monster Kapalıysa)
+    if not res_text and api_keys:
         for _ in range(len(api_keys)):
             current_key = next(client_iterator)
             for current_model in MODELS_TO_TRY:
@@ -106,8 +85,7 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                                 {"role": "user", "content": f"GEÇMİŞ:\n{full_history}\n\nBomboclat:"}
                             ],
                             "temperature": 0.5 
-                        },
-                        timeout=20
+                        }, timeout=20
                     )
                     if resp.status_code == 200:
                         res_text = resp.json()['choices'][0]['message']['content']
@@ -117,7 +95,7 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
                 except: continue
             if res_text: break
 
-    # 🛠️ 3. ADIM: İCRAAT VE YANIT İLETİŞİMİ
+    # 3. ADIM: İCRAAT VE YANIT
     if res_text:
         if "[PYTHON]" in res_text:
             if user_id not in ALLOWED_USERS:
@@ -127,12 +105,9 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
             match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
             if match and MONSTER_PC_URL:
                 try:
-                    # Kodu Monster'da çalıştır (SS, Kamera, Program Aç vb.)
                     r = requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40)
-                    result = r.json()
                     clean_res = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
-                    
-                    status_msg = f"\n\n{brain_source} | *(Sinyal İletildi ⚡)*" if result.get("status") == "success" else f"\n\n{brain_source} | *(⚠️ Hata: {result.get('msg')[:50]})*"
+                    status_msg = f"\n\n{brain_source} | *(Sinyal İletildi ⚡)*" if r.json().get("status") == "success" else f"\n\n{brain_source} | *(⚠️ Hata: {r.json().get('msg')[:50]})*"
                     bot.send_message(chat_id, (clean_res + status_msg).strip() if clean_res or status_msg else "Görev tamam.")
                 except:
                     bot.send_message(chat_id, f"{res_text}\n\n{brain_source}\n*(⚠️ Monster ulaşılamadı)*")
@@ -147,11 +122,9 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
-    user_id = message.from_user.id
+    user_id, chat_id = message.from_user.id, message.chat.id
     user_name = message.from_user.first_name or "Hazım"
-    chat_id = message.chat.id
     
-    # Temel ID Komutu
     if message.text:
         cmd = message.text.lower().split('@')[0].strip()
         if cmd in ["/id", "id"]:
@@ -160,7 +133,6 @@ def handle_messages(message):
 
     if message.text and message.text.startswith('/'): return
     
-    # Mesaj Filtreleme (Özel, Etiket veya Yanıt)
     is_private = message.chat.type == 'private'
     is_tagged = (message.text and f"@{BOT_INFO.username}" in message.text)
     is_reply_to_me = (message.reply_to_message and message.reply_to_message.from_user.id == BOT_INFO.id)
@@ -168,19 +140,15 @@ def handle_messages(message):
     if not (is_private or is_tagged or is_reply_to_me): return
 
     prompt = (message.text or "").replace(f"@{BOT_INFO.username}", "").strip()
-    
-    # Donma yapmaması için yeni thread
     threading.Thread(target=process_ai_request, args=(message, prompt, user_name, chat_id, user_id)).start()
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
-    json_string = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_string)
-    bot.process_new_updates([update])
+    bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('utf-8'))])
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V84: Hybrid Titan Live! 🚀 (Owner: {OWNER_ID})", 200
+def main(): return f"Bomboclat V85: Clean Hybrid Live! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
