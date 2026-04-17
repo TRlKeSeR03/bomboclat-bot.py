@@ -97,8 +97,11 @@ def handle_messages(message):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
+    # 🔄 API Anahtarları Arasında Döngü (429 Çözümü)
     for _ in range(len(api_keys)):
         current_client = next(client_iterator)
+        
+        # Her anahtar için modelleri tek tek dene
         for current_model in MODELS_TO_TRY:
             try:
                 response = current_client.models.generate_content(
@@ -120,7 +123,6 @@ def handle_messages(message):
                             
                             if MONSTER_PC_URL:
                                 try:
-                                    # Artık güncel olan MONSTER_PC_URL kullanılıyor
                                     requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=15)
                                     res_text = (res_text + "\n\n*(Sinyal Monster'a iletildi ⚡)*").strip()
                                 except:
@@ -130,15 +132,22 @@ def handle_messages(message):
 
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
                     bot.reply_to(message, res_text if res_text else "Komut icra ediliyor... 🛡️")
-                    return 
+                    return # Başarılı yanıt geldi, fonksiyondan çık.
                     
             except Exception as e:
                 last_error = str(e)
-                if "404" in last_error or "503" in last_error: continue
-                if "429" in last_error: break 
-                continue
+                # 🛡️ 429 (Resource Exhausted) tespiti
+                if "429" in last_error or "quota" in last_error.lower() or "exhausted" in last_error.lower():
+                    print(f"⚠️ Kota doldu, sonraki API anahtarına geçiliyor...", flush=True)
+                    break # Bu anahtar bitti, iç döngüden çıkıp bir sonraki client'a geç.
+                
+                # 404 veya 503 ise sonraki modeli dene
+                if "404" in last_error or "503" in last_error:
+                    continue
+                
+                continue # Diğer hatalarda devam et
 
-    bot.reply_to(message, f"🛠️ Google sunucuları meşgul.\n`Hata: {last_error[:30]}`")
+    bot.reply_to(message, f"🛠️ Tüm API anahtarları veya Google sunucuları meşgul. Biraz bekleyip tekrar dene Hazım.\n`Hata: {last_error[:30]}`")
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -155,3 +164,4 @@ if __name__ == "__main__":
     time.sleep(1)
     bot.set_webhook(url=WEBHOOK_URL)
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    
