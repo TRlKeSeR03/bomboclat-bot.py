@@ -20,7 +20,7 @@ bot = telebot.TeleBot(TELE_TOKEN)
 app = Flask(__name__)
 BOT_INFO = bot.get_me()
 chat_histories = {}
-processed_messages = set() # Çift cevap engelleyici kilit
+processed_messages = set() 
 
 @app.route('/update_url', methods=['POST'])
 def update_url():
@@ -45,7 +45,7 @@ def get_ai_response(prompt, system_context, full_history):
                 }
                 r = requests.post(url, json=payload, timeout=12)
                 if r.status_code == 200:
-                    return r.json()['candidates'][0]['content']['parts'][0]['text'], "*(✨ Gemini Flash)*"
+                    return r.json()['candidates'][0]['content']['parts'][0]['text']
             except: continue
 
     # 2. YEDEK: GROQ
@@ -63,13 +63,12 @@ def get_ai_response(prompt, system_context, full_history):
                     }, timeout=12
                 )
                 if r.status_code == 200:
-                    return r.json()['choices'][0]['message']['content'], "*(☁️ Groq Cloud)*"
+                    return r.json()['choices'][0]['message']['content']
             except: continue
-    return None, None
+    return None
 
 def process_ai_request(message, prompt, user_name, chat_id, user_id):
     global MONSTER_PC_URL
-    
     if message.message_id in processed_messages: return
     processed_messages.add(message.message_id)
     
@@ -82,57 +81,51 @@ def process_ai_request(message, prompt, user_name, chat_id, user_id):
 
     now = datetime.now(timezone.utc) + timedelta(hours=3)
     
-    # --- YENİLENMİŞ SERT TALİMATLAR VE ÖRNEKLER ---
+    # --- PROMPT VE KURALLAR ---
     system_context = (
-        f"KİMLİK: Sen Bomboclat'sın. Hazım'ın (sentinelPRİME) asistanısın. Konum: Afyonkarahisar.\n"
-        f"PC DURUMU: {'AÇIK' if is_pc_alive else 'KAPALI'}. Zaman: {now.strftime('%H:%M:%S')}.\n\n"
-        "KESİN TALİMATLAR:\n"
-        "1. İnsan gibi konuş, robotik olma.\n"
-        "2. Kullanıcı site açmanı (YouTube vb.) veya uygulama çalıştırmanı isterse ASLA bilgi verme, direkt KOD yaz.\n"
-        "3. Site açmak için 'webbrowser' kütüphanesini kullan.\n"
-        "4. KOD ÖRNEKLERİ:\n"
-        "- Youtube aç: [PYTHON]\nimport webbrowser\nwebbrowser.open('https://www.youtube.com')\n[/PYTHON]\n"
-        "- SS al: [PYTHON]\nimport pyautogui, requests, os\npyautogui.screenshot('ss.png')\n"
-        f"requests.post('https://api.telegram.org/bot{TELE_TOKEN}/sendPhoto', data={{'chat_id': '{chat_id}'}}, files={{'photo': open('ss.png', 'rb')}})\nos.remove('ss.png')\n[/PYTHON]"
+        f"KİMLİK: Sen Bomboclat'sın. sentinelPRİME (Hazım) asistanısın. Konum: Afyonkarahisar.\n"
+        f"PC DURUMU: {'AÇIK' if is_pc_alive else 'KAPALI'}.\n\n"
+        "TALİMATLAR:\n"
+        "1. Her mesajda saat söyleme. Sadece kullanıcı açıkça saat kaç diye sorarsa söyle.\n"
+        "2. Doğal ve akılcı konuş. Gereksiz robotik girişlerden kaçın.\n"
+        "3. PC açıksa ve bir işlem (ss, kamera, site açma, uygulama çalıştırma vb.) istenirse SADECE [PYTHON]...[/PYTHON] bloğu üret.\n"
+        "4. Kod yazarken 'requests.post' ile Telegram'a dosya göndermeyi unutma.\n"
+        f"Teknik Bilgi: Token={TELE_TOKEN}, ChatID={chat_id}"
     )
 
-    full_history = "\n".join(chat_histories.get(chat_id, [])[-8:])
-    res_text, source = get_ai_response(prompt, system_context, full_history)
+    full_history = "\n".join(chat_histories.get(chat_id, [])[-5:])
+    res_text = get_ai_response(prompt, system_context, full_history)
 
     if res_text:
+        # Kod bloğunu Telegram mesajından temizle (Görünmez yap)
+        clean_res = re.sub(r'\[PYTHON\].*?\[/PYTHON\]', '', res_text, flags=re.DOTALL).strip()
+        
+        # Kod çalıştırma (Sadece yetkili kullanıcı ve açık PC)
         if "[PYTHON]" in res_text and is_pc_alive and user_id in ALLOWED_USERS:
             match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
             if match:
                 try:
+                    # Kodu gizlice Monster'a gönder
                     requests.post(f"{MONSTER_PC_URL}/execute", json={"code": match.group(1).strip()}, timeout=40, headers={'ngrok-skip-browser-warning': 'true'})
-                    bot.send_message(chat_id, f"{res_text}\n\n{source} | *(İşlem Monster'a İletildi ⚡)*")
+                    
+                    # Kullanıcıya sadece temizlenmiş mesajı ve onay sembolünü gönder
+                    status_text = f"{clean_res}\n\n⚡" if clean_res else "İstediğin işlemi hallediyorum Hazım. ⚡"
+                    bot.send_message(chat_id, status_text)
                 except:
-                    bot.send_message(chat_id, f"{res_text}\n\n{source} | *(⚠️ PC Bağlantı Hatası)*")
+                    bot.send_message(chat_id, f"{clean_res}\n*(⚠️ PC Bağlantı Hatası)*")
                 return
 
-        bot.send_message(chat_id, f"{res_text}\n\n{source}")
+        # Kod yoksa veya PC kapalıysa sadece temiz mesajı gönder
+        if clean_res or res_text:
+            bot.send_message(chat_id, clean_res or res_text)
         
     if len(processed_messages) > 100: processed_messages.clear()
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     user_id, chat_id = message.from_user.id, message.chat.id
-    if message.text:
-        if message.text.lower() in ["/id", "id"]:
-            bot.reply_to(message, f"ID: `{user_id}`")
-            return
-        if message.text.lower() == "/link":
-            bot.reply_to(message, f"Link: `{MONSTER_PC_URL}`")
-            return
-
-    if message.text and message.text.startswith('/'): return
-    
-    is_private = message.chat.type == 'private'
-    is_tagged = (message.text and f"@{BOT_INFO.username}" in message.text)
-    if not (is_private or is_tagged): return
-
-    prompt = (message.text or "").replace(f"@{BOT_INFO.username}", "").strip()
-    threading.Thread(target=process_ai_request, args=(message, prompt, message.from_user.first_name, chat_id, user_id)).start()
+    if message.text and not message.text.startswith('/'):
+        threading.Thread(target=process_ai_request, args=(message, message.text, message.from_user.first_name, chat_id, user_id)).start()
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -140,7 +133,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "Bomboclat Hybrid AI Active 🚀", 200
+def main(): return "Bomboclat Hybrid AI: Silent & Efficient! 🚀", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
