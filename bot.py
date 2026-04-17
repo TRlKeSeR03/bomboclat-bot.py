@@ -14,7 +14,7 @@ api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# 2026'nın canavarı. Eğer çok 429 alırsan 'gemini-1.5-flash'a çekebilirsin.
+# 2.0-flash şu an en hızlısı. Eğer 404 alırsan 'gemini-1.5-flash-latest' yaparsın.
 MODEL_ID = 'gemini-2.0-flash' 
 
 clients = [genai.Client(api_key=key) for key in api_keys]
@@ -37,27 +37,23 @@ def handle_messages(message):
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
+    # ARTIK DAHA İNSANSI VE SADE BİR SİSTEM TALİMATI
     system_context = (
-        "Sen Bomboclat'sın. Hazım'ın samimi ama eleştirel dostusun. "
-        "Yapay zeka gibi değil, gerçek bir insan gibi konuş. "
-        "Hazım'a karşı dürüst ol, gerekirse tartış. "
-        "Zaman: " + time_str + " (Afyon). Bu bilgiyi sadece gerekirse kullan."
+        "Sen Bomboclat'sın. Hazım'ın yakın dostu ve bağımsız zihnisin. "
+        "Yapay zeka asistanı gibi davranma, bir insan gibi konuş. "
+        "Hazım'ın her dediğine katılma, dürüstçe eleştir ve kendi fikirlerini savun. "
+        "Zaman: " + time_str + " (Afyon). Bu bilgiyi sadece çok gerekirse kullan, sürekli tekrarlama."
     )
 
     last_error = ""
-    # Anahtar sayısı kadar deneme yapıyoruz
     for i in range(len(api_keys)):
         try:
             current_client = next(client_iterator)
             
-            # İNTERNET ERİŞİMLİ ÜRETİM
+            # TERTEMİZ, ARAÇSIZ ÜRETİM (429'un katili)
             response = current_client.models.generate_content(
                 model=MODEL_ID, 
-                contents=f"{system_context}\n\nHazım: {prompt}",
-                config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearchRetrieval())],
-                    temperature=0.7 # Biraz daha insani ve değişken cevaplar için
-                )
+                contents=f"{system_context}\n\nHazım: {prompt}"
             )
             
             if response and response.text:
@@ -67,20 +63,12 @@ def handle_messages(message):
         except Exception as e:
             last_error = str(e)
             print(f">> Motor {i+1} Hatası: {last_error[:50]}...", flush=True)
-            
-            if "429" in last_error:
-                # Kota dolduysa 3 saniye bekle ve diğer anahtara geç
-                time.sleep(3)
-                continue
-            elif "404" in last_error:
-                # Model bulunamadıysa (ki düzelttik) hemen bildir
-                bot.reply_to(message, "🛠️ Model ismi yine uçtu, Hazım bir kontrol et.")
-                return
-            
-    # Eğer tüm anahtarlar biterse:
-    bot.reply_to(message, f"🛠️ Google ablukası çok sert Hazım. Tüm anahtarlar 429 yedi.\n\n`Mevzu: {last_error[:50]}...` \n(Birkaç dakika sonra tekrar dene.)")
+            time.sleep(1) # Çok kısa bekleme
+            continue
 
-# Flask ve Webhook (Aynı kalıyor)
+    bot.reply_to(message, f"🛠️ Hazım, Google yine 'yavaşla' diyor. Birkaç dakika bekleyelim mi?\n`Hata: {last_error[:40]}`")
+
+# Flask ve Webhook kısımları aynı kalıyor...
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -89,7 +77,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return "V27: Sabır ve Kurtarma Modu!", 200
+def main(): return "Bomboclat V28: Stabil Mod Aktif!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
