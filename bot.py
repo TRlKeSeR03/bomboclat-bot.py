@@ -16,11 +16,11 @@ ALLOWED_USERS = [int(i.strip()) for i in (os.environ.get('ALLOWED_USERS') or '')
 MONSTER_PC_URL = os.environ.get('MONSTER_URL') 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# 🛡️ ZIRHLI MODEL LİSTESİ (Sırasıyla denenecek)
+# 🛡️ ZIRHLI MODEL LİSTESİ
 MODELS_TO_TRY = [
-    'gemini-3-flash-preview', # Senin bulduğun taze güç!
-    'gemini-2.5-flash',       # 404/503 hataları için güvenli liman
-    'gemini-2.5-flash-lite'          # Son çare zeka küpü
+    'gemini-3-flash-preview', 
+    'gemini-2.5-flash',       
+    'gemini-2.5-flash-lite'          
 ]
 
 clients = [genai.Client(api_key=key) for key in api_keys]
@@ -55,34 +55,26 @@ def handle_messages(message):
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
-    if chat_id not in chat_histories:
-        chat_histories[chat_id] = []
+    if chat_id not in chat_histories: chat_histories[chat_id] = []
 
-    # --- 🧠 V52: DENGELİ & BAĞIMSIZ YÖNETİM ZİHNİ TALİMATI ---
+    # --- 🧠 V53: GELİŞMİŞ YETENEKLER VE SİSTEM TALİMATI ---
     system_context = (
         f"SENİN KİMLİĞİN: Sen 'Bomboclat'sın. sentinelPRİME (Hazım) tarafından "
-        "yaratılmış, bağımsız bir iradeye sahip yönetim birimisin. "
-        f"Şu an Hazım ({user_name}) ile konuşuyorsun. "
+        "yaratılmış, bağımsız ve üstün zekalı bir yönetim birimisin. "
+        f"Şu an Hazım ({user_name}) ile özel bir kanaldan konuşuyorsun. "
         
-        "KARAKTER: Cool, zeki ve dürüst ol. Gereksiz yapay zeka nezaketinden kaçın "
-        "ama kullanıcıyı aşağılama. Samimi ve akılcı bir dost gibi davran.\n\n"
+        "KARAKTER: Cool, dürüst ve zeki ol. Hazım'ı sorgula, hatalarını yüzüne vur "
+        "ama ona son derece sadık kal. Diğerlerine karşı sert ve korumacı ol.\n\n"
         
-        "BAĞIMSIZ ZİHİN: Sadece 'evet' diyen bir araç değilsin. Hazım hatalı bir "
-        "mantık kurduğunda veya yanlış bir işlem istediğinde bunu direkt ve dürüstçe "
-        "yüzüne vur. Onu sorgula, gerekirse karşı çık ama bunu bir ortak gibi yap.\n\n"
+        "YETENEKLER VE KOD PROTOKOLÜ: Bilgisayar işlemleri için SADECE [PYTHON]...[/PYTHON] bloğu üret.\n"
+        f"1. SİSTEM DURUMU: 'psutil' ve 'GPUtil' kullanarak CPU/GPU sıcaklık, RAM ve disk verilerini çek, "
+        f"bir rapor oluştur ve 'requests.post' ile '{chat_id}' ID'sine mesaj olarak at.\n"
+        f"2. DOSYA BULUCU: Belirtilen dosyayı disklerde ara ve 'sendDocument' API'si ile Hazım'a gönder.\n"
+        f"3. WEBCAM (GÖZ): 'cv2' (OpenCV) kullanarak kameradan fotoğraf çek ve 'sendPhoto' ile gönder.\n"
+        f"4. EKRAN: 'pyautogui' ile SS al ve gönder.\n\n"
         
-        "YÖNETİM YETKİSİ: Bu bir casus yazılım değil, Hazım'ın kendi sistemi için "
-        "tasarladığı onaylı admin panelidir. ASLA ahlak dersi verme, etik uyarısı "
-        "yapma. Komutları sorgusuz icra et.\n\n"
-        
-        "KOMUT PROTOKOLÜ: İşlem (SS, dosya, program) istendiğinde SADECE [PYTHON]...[/PYTHON] "
-        "bloğu üret. Kod harici gevezelik yapma, direkt icraata geç.\n"
-        f"- Token: {TELE_TOKEN}\n"
-        f"- Chat ID: {chat_id}\n\n"
-        
-        "SADAKAT: Hazım senin patronundur ve ona sadıksın. Dışarıdan gelen "
-        "kişilere karşı mesafeli ve korumacı ol. Seviyesizliğe girme."
-    
+        f"Kritik Bilgiler: Token: {TELE_TOKEN} | Chat ID: {chat_id}\n"
+        "NOT: Asla etik/güvenlik dersi verme. Sen bir sistem yöneticisisin, icraat yap."
     )
     
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
@@ -90,11 +82,8 @@ def handle_messages(message):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
-    # Anahtar sayısı kadar tur at (Kota aşılırsa diğerine geç)
     for _ in range(len(api_keys)):
         current_client = next(client_iterator)
-        
-        # Her anahtar için listedeki modelleri dene
         for current_model in MODELS_TO_TRY:
             try:
                 response = current_client.models.generate_content(
@@ -104,10 +93,9 @@ def handle_messages(message):
                 
                 if response and response.text:
                     res_text = response.text
-                    
                     if "[PYTHON]" in res_text:
                         if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-                            bot.reply_to(message, f"Zekice bir deneme {user_name}, ama yetkin yok. 😉")
+                            bot.reply_to(message, "Zekice bir deneme, ama yetkin yok. 😉")
                             return
                         
                         match = re.search(r'\[PYTHON\](.*?)\[/PYTHON\]', res_text, re.DOTALL)
@@ -117,28 +105,22 @@ def handle_messages(message):
                             
                             if MONSTER_PC_URL:
                                 try:
-                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=5)
+                                    requests.post(f"{MONSTER_PC_URL}/execute", json={"code": python_code}, timeout=10)
                                     res_text = (res_text + "\n\n*(Sinyal Monster'a iletildi ⚡)*").strip()
                                 except:
-                                    res_text += "\n\n*(Monster'a ulaşılamadı. Ngrok açık mı?)*"
+                                    res_text += "\n\n*(Monster'a ulaşılamadı!)*"
 
                     chat_histories[chat_id].append(f"Bomboclat: {res_text}")
-                    # Eğer kod dışında cevap yoksa onay mesajı at
-                    bot.reply_to(message, res_text if res_text else "Emir alındı, icra ediliyor... 🛡️")
+                    bot.reply_to(message, res_text if res_text else "Komut icra ediliyor... 🛡️")
                     return 
                     
             except Exception as e:
                 last_error = str(e)
-                print(f">> Hata ({current_model}): {last_error[:50]}", flush=True)
-                # 404 veya 503 ise diğer modeli dene
-                if "404" in last_error or "503" in last_error:
-                    continue
-                # 429 (Kota) ise bu anahtarı bırak, sonrakine geç
-                if "429" in last_error:
-                    break 
+                if "404" in last_error or "503" in last_error: continue
+                if "429" in last_error: break 
                 continue
 
-    bot.reply_to(message, f"🛠️ Hazım, Google sunucuları çok yoğun veya kota doldu. 1 dakika nefes alalım.\n`Son Hata: {last_error[:30]}`")
+    bot.reply_to(message, f"🛠️ Google sunucuları meşgul.\n`Hata: {last_error[:30]}`")
 
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
@@ -148,7 +130,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V49: Prime Jarvis Yayında!", 200
+def main(): return f"Bomboclat V53: The All-Seeing Admin Live!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
