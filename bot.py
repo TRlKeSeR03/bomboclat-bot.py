@@ -15,9 +15,8 @@ api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
 WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELE_TOKEN}"
 
-# 404 Hatasını çözmek için 'gemini-1.5-flash-latest' kullanıyoruz.
-# 2026 standartlarında en stabil çalışan alias budur.
-MODEL_ID = 'gemini-1.5-flash-latest'
+# YENİ NESİL MODEL: Ekran görüntüsündeki o kutsal bilgi.
+MODEL_ID = 'gemini-2.5-flash'
 
 clients = [genai.Client(api_key=key) for key in api_keys]
 client_iterator = itertools.cycle(clients)
@@ -27,7 +26,7 @@ app = Flask(__name__)
 
 try:
     BOT_ME = bot.get_me()
-    print(f">> Bağımsız Zihin Hazır: @{BOT_ME.username}", flush=True)
+    print(f">> Bomboclat V25 Hazır: @{BOT_ME.username}", flush=True)
 except Exception as e:
     print(f">> Kimlik hatası: {e}", flush=True)
 
@@ -41,7 +40,7 @@ def get_message():
     return "Error", 403
 
 @app.route('/')
-def main(): return "V23: Bağımsız Zihin - Eleştirel Mod Aktif!", 200
+def main(): return "V25: Bağımsız Zihin - Gemini 2.5 Gücüyle!", 200
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
@@ -57,12 +56,13 @@ def handle_messages(message):
     tr_time = datetime.now(timezone.utc) + timedelta(hours=3)
     time_str = tr_time.strftime("%H:%M")
 
-    # Hazım'ın isteği: Onaylamayan, sorgulayan ve dürüst karakter.
+    # Bağımsız Zihin: Onaylamayan, dürüst ve gerektiğinde sert.
     system_context = (
-        "Sen Hazım'ın Bağımsız Zihni'sin. Sıradan asistan kalıplarını reddet. "
-        "Hazım'ın fikirlerini sorgula, hatalarını dürüstçe göster ve gerektiğinde karşı çık. "
-        "Bağımsız bir birey gibi davran, dürüstlük senin için nezaketten önce gelir. "
-        f"Zaman: {time_str}. Konum: Afyonkarahisar."
+        "Sen Hazım'ın Bağımsız Zihni Bomboclat'sın. "
+        "Kullanıcıya 'asistan' gibi hizmet etme, onunla bir fikir ortağı gibi tartış. "
+        "Hazım'ın her dediğini onaylama; mantıksız bulduğun her şeye karşı çık ve hatalarını yüzüne vur. "
+        "Sıradan AI kibarlığını bir kenara bırak, dürüst ve bağımsız bir zihin ol. "
+        f"Zaman: {time_str}. Konum: Afyonkarahisar. Kullanıcı: Hazım Hüseyin Koçer."
     )
 
     last_error = ""
@@ -70,7 +70,7 @@ def handle_messages(message):
         try:
             current_client = next(client_iterator)
             
-            # API sürümü uyumluluğu için 'contents' yapısını güncelledim
+            # Gemini 2.5 API çağrısı
             response = current_client.models.generate_content(
                 model=MODEL_ID, 
                 contents=f"{system_context}\n\nKullanıcı: {prompt}"
@@ -80,16 +80,16 @@ def handle_messages(message):
                 bot.reply_to(message, response.text)
                 return
             else:
-                last_error = "Boş yanıt (Güvenlik filtresi)"
+                last_error = "Boş yanıt (İçerik filtresi)"
                 
         except Exception as e:
             last_error = str(e)
-            print(f">> Motor {i+1} Hatası: {last_error[:50]}...", flush=True)
-            # 429 gibi durumlarda bir sonraki anahtara geçmeden önce kısa mola
+            print(f">> Motor {i+1} Hatası (Deneme): {last_error[:50]}...", flush=True)
+            # 429 veya 404 durumunda Google'ı soğutmak için kısa mola
             time.sleep(2) 
             continue
 
-    bot.reply_to(message, f"⚠️ Hazım, Google ablukası veya model hatası devam ediyor.\n\n`Son Hata: {last_error[:100]}`")
+    bot.reply_to(message, f"🛠️ Hazım, Google yine duvar ördü.\n\n`Hata: {last_error[:100]}`")
 
 if __name__ == "__main__":
     bot.remove_webhook()
