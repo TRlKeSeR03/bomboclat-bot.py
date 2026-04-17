@@ -12,9 +12,7 @@ TELE_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 keys_env = os.environ.get('GEMINI_KEYS') or os.environ.get('GEMINI_KEY') or ''
 api_keys = [k.strip() for k in keys_env.split(',') if k.strip()]
 
-# --- 🔒 GÜVENLİK DUVARI (Beyaz Liste) ---
-# Buraya kendi Telegram ID'ni ve arkadaşlarının ID'lerini virgülle ekle.
-# Örn: '1234567,8901234'
+# --- 🔒 GÜVENLİK DUVARI ---
 allowed_ids_env = os.environ.get('ALLOWED_USERS') or ''
 ALLOWED_USERS = [int(i.strip()) for i in allowed_ids_env.split(',') if i.strip()]
 
@@ -35,15 +33,18 @@ def handle_messages(message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name or "Yabancı"
     
+    # --- 🆔 ID ÖĞRENME (Her zaman çalışır) ---
+    if message.text and message.text.lower() in ["/id", "id", "numaram kaç"]:
+        bot.reply_to(message, f"Senin Telegram ID numaran: `{user_id}`")
+        return
+
     # 🕵️ GÜVENLİK KONTROLÜ
-    # Eğer beyaz liste boş değilse ve kullanıcı listede yoksa:
     if ALLOWED_USERS and user_id not in ALLOWED_USERS:
-        # Özel mesajda ise uyar ve dur, grupta ise sadece cevap verme
         if message.chat.type == 'private':
-            print(f">> Yetkisiz Giriş Engellendi: {user_name} (ID: {user_id})", flush=True)
             bot.reply_to(message, f"Üzgünüm {user_name}, Hazım'dan izin almadan benimle konuşamazsın. ID numaran: `{user_id}`")
         return
 
+    # --- Standart Mesaj İşleme ---
     if message.text and message.text.startswith('/'): return
     
     is_private = message.chat.type == 'private'
@@ -63,9 +64,8 @@ def handle_messages(message):
 
     system_context = (
         f"Senin adın Bomboclat. Hazım Hüseyin Koçer tarafından geliştirilen bağımsız bir zihinsin. "
-        f"Cool, zeki ve rasyonel bir üye gibi davran. Konuştuğun kişi: {user_name}. "
-        f"Hazım ile samimi ol, başkalarıyla konuşurken Hazım'ın botu olduğunu hissettir. "
-        f"ID'si bu listede olanlar yetkili kişilerdir. (Zaman: Afyon, {time_str})"
+        f"Grup üyesi gibi cool ve rasyonel davran. Konuştuğun kişi: {user_name}. "
+        f"Hazım ile samimi ol, başkalarıyla mesafeli ol. (Saat: {time_str})"
     )
 
     chat_histories[chat_id].append(f"{user_name}: {prompt}")
@@ -73,9 +73,7 @@ def handle_messages(message):
     full_history = "\n".join(chat_histories[chat_id])
 
     last_error = ""
-    num_keys = len(api_keys)
-
-    for i in range(num_keys):
+    for i in range(len(api_keys)):
         try:
             current_client = next(client_iterator)
             response = current_client.models.generate_content(
@@ -96,6 +94,7 @@ def handle_messages(message):
 
     bot.reply_to(message, f"🛠️ Hazım, sistemler meşgul. Hata: {last_error[:40]}")
 
+# Flask ve Webhook (Aynı kalıyor)
 @app.route(f'/{TELE_TOKEN}', methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -104,7 +103,7 @@ def get_message():
     return "OK", 200
 
 @app.route('/')
-def main(): return f"Bomboclat V40: Güvenlik Duvarı Aktif!", 200
+def main(): return f"Bomboclat V41: ID Sistemi Aktif!", 200
 
 if __name__ == "__main__":
     bot.remove_webhook()
